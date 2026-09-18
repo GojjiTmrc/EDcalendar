@@ -1,0 +1,565 @@
+{
+  "app": "EDcalendar",
+  "version": "1.1",
+  "exportedAt": "2026-09-18T09:53:57.764Z",
+  "data": {
+    "semesters": [
+      {
+        "id": "sem-2569-1",
+        "name": "ภาคเรียนที่ 1/2569",
+        "startDate": "2026-05-12",
+        "endDate": "2026-09-30"
+      },
+      {
+        "id": "sem-2569-2",
+        "name": "ภาคเรียนที่ 2/2569",
+        "startDate": "2026-10-19",
+        "endDate": "2027-02-28"
+      }
+    ],
+    "subjects": [
+      {
+        "id": "sub-1789550883948",
+        "code": "ว22201",
+        "name": "วิทยาศาสตร์กับความงาม",
+        "defaultRoom": "ห้อง ม.2/1",
+        "gradeGroup": "ม.2/1",
+        "colorId": "emerald",
+        "description": ""
+      },
+      {
+        "id": "sub-1789550934017",
+        "code": "-",
+        "name": "วิทยาการคำนวณ",
+        "defaultRoom": "ห้อง ม.5/1",
+        "gradeGroup": "ม.5/1",
+        "colorId": "rose",
+        "description": ""
+      },
+      {
+        "id": "sub-1789550992034",
+        "code": "ว32281",
+        "name": "คอมพิวเตอร์",
+        "defaultRoom": "ห้องคอมพิวเตอร์ 1",
+        "gradeGroup": "ม.5/1",
+        "colorId": "amber",
+        "description": ""
+      },
+      {
+        "id": "sub-1789551066034",
+        "code": "ว23102",
+        "name": "วิทยาการคำนวณ",
+        "defaultRoom": "ห้องคอมพิวเตอร์ 2",
+        "gradeGroup": "ม.3/1",
+        "colorId": "sky",
+        "description": ""
+      },
+      {
+        "id": "sub-1789551111475",
+        "code": "ว23102",
+        "name": "วิทยาการคำนวณ",
+        "defaultRoom": "ห้องคอมพิวเตอร์ 2",
+        "gradeGroup": "ม.3/2",
+        "colorId": "sky",
+        "description": ""
+      },
+      {
+        "id": "sub-1789551143086",
+        "code": "ว23102",
+        "name": "วิทยาการคำนวณ",
+        "defaultRoom": "ห้องคอมพิวเตอร์ 2",
+        "gradeGroup": "ม.3/3",
+        "colorId": "sky",
+        "description": ""
+      },
+      {
+        "id": "sub-1789551180623",
+        "code": "ว22201",
+        "name": "วิทยาศาสตร์กับความงาม",
+        "defaultRoom": "ห้อง ม.2/2",
+        "gradeGroup": "ม.2/2",
+        "colorId": "teal",
+        "description": ""
+      }
+    ],
+    "slots": [
+      {
+        "id": "slot-1789551215759",
+        "semesterId": "sem-2569-1",
+        "subjectId": "sub-1789550883948",
+        "dayOfWeek": 1,
+        "periods": 2,
+        "startTime": "09:30",
+        "endTime": "11:10"
+      },
+      {
+        "id": "slot-1789551254908",
+        "semesterId": "sem-2569-1",
+        "subjectId": "sub-1789550934017",
+        "dayOfWeek": 1,
+        "periods": 1,
+        "startTime": "11:10",
+        "endTime": "12:00"
+      },
+      {
+        "id": "slot-1789551294979",
+        "semesterId": "sem-2569-1",
+        "subjectId": "sub-1789550992034",
+        "dayOfWeek": 2,
+        "periods": 2,
+        "startTime": "13:00",
+        "endTime": "14:40"
+      },
+      {
+        "id": "slot-1789551321453",
+        "semesterId": "sem-2569-1",
+        "subjectId": "sub-1789551066034",
+        "dayOfWeek": 3,
+        "periods": 1,
+        "startTime": "09:30",
+        "endTime": "10:20"
+      },
+      {
+        "id": "slot-1789551357354",
+        "semesterId": "sem-2569-1",
+        "subjectId": "sub-1789551143086",
+        "dayOfWeek": 3,
+        "periods": 1,
+        "startTime": "11:10",
+        "endTime": "12:00"
+      },
+      {
+        "id": "slot-1789551390945",
+        "semesterId": "sem-2569-1",
+        "subjectId": "sub-1789551111475",
+        "dayOfWeek": 4,
+        "periods": 1,
+        "startTime": "08:40",
+        "endTime": "09:30"
+      },
+      {
+        "id": "slot-1789551419819",
+        "semesterId": "sem-2569-1",
+        "subjectId": "sub-1789551180623",
+        "dayOfWeek": 5,
+        "periods": 2,
+        "startTime": "08:40",
+        "endTime": "10:20"
+      }
+    ],
+    "overrides": [
+      {
+        "id": "custom-sess-1789553223760",
+        "semesterId": "sem-2569-1",
+        "date": "2026-06-19",
+        "subjectId": "sub-1789550883948",
+        "isCustomSession": true,
+        "startTime": "08:30",
+        "endTime": "10:00",
+        "room": "ห้อง ม.2/1",
+        "status": "activity",
+        "reason": "อบรมวินัยจราจร",
+        "topic": "",
+        "notes": ""
+      },
+      {
+        "id": "ovr-1789553345773",
+        "semesterId": "sem-2569-1",
+        "date": "2026-06-26",
+        "slotId": "slot-1789551419819",
+        "subjectId": "sub-1789551180623",
+        "status": "activity",
+        "reason": "สุนทรภู่ / ต้านยาเสพติด",
+        "topic": "",
+        "notes": ""
+      },
+      {
+        "id": "ovr-1789553374865",
+        "semesterId": "sem-2569-1",
+        "date": "2026-06-12",
+        "slotId": "slot-1789551419819",
+        "subjectId": "sub-1789551180623",
+        "status": "activity",
+        "reason": "อบรมคุณธรรม",
+        "topic": "",
+        "notes": ""
+      },
+      {
+        "id": "ovr-1789553384074",
+        "semesterId": "sem-2569-1",
+        "date": "2026-06-11",
+        "slotId": "slot-1789551390945",
+        "subjectId": "sub-1789551111475",
+        "status": "activity",
+        "reason": "ไหว้ครู",
+        "topic": "",
+        "notes": ""
+      },
+      {
+        "id": "ovr-1789553412408",
+        "semesterId": "sem-2569-1",
+        "date": "2026-06-10",
+        "slotId": "slot-1789551321453",
+        "subjectId": "sub-1789551066034",
+        "status": "activity",
+        "reason": "ประชุมผู้ปกครอง",
+        "topic": "ประชุมผู้ปกครอง",
+        "notes": ""
+      },
+      {
+        "id": "ovr-1789553416428",
+        "semesterId": "sem-2569-1",
+        "date": "2026-06-10",
+        "slotId": "slot-1789551357354",
+        "subjectId": "sub-1789551143086",
+        "status": "activity",
+        "reason": "ประชุมผู้ปกครอง",
+        "topic": "",
+        "notes": ""
+      },
+      {
+        "id": "ovr-1789553962926",
+        "semesterId": "sem-2569-1",
+        "date": "2026-09-04",
+        "slotId": "slot-1789551419819",
+        "subjectId": "sub-1789551180623",
+        "status": "activity",
+        "reason": "ไปดูงานที่โรงเรียนบ้านภูผาม่าน",
+        "topic": "",
+        "notes": ""
+      },
+      {
+        "id": "ovr-1789553981548",
+        "semesterId": "sem-2569-1",
+        "date": "2026-08-21",
+        "slotId": "slot-1789551419819",
+        "subjectId": "sub-1789551180623",
+        "status": "activity",
+        "reason": "อบรมยาเสพติด ม.ปลาย",
+        "topic": "",
+        "notes": ""
+      },
+      {
+        "id": "ovr-1789553994507",
+        "semesterId": "sem-2569-1",
+        "date": "2026-08-18",
+        "slotId": "slot-1789551294979",
+        "subjectId": "sub-1789550992034",
+        "status": "activity",
+        "reason": "วันวิทยาศาสตร์",
+        "topic": "",
+        "notes": ""
+      },
+      {
+        "id": "ovr-1789554007339",
+        "semesterId": "sem-2569-1",
+        "date": "2026-08-12",
+        "slotId": "slot-1789551321453",
+        "subjectId": "sub-1789551066034",
+        "status": "activity",
+        "reason": "วันแม่",
+        "topic": "",
+        "notes": ""
+      },
+      {
+        "id": "ovr-1789554013647",
+        "semesterId": "sem-2569-1",
+        "date": "2026-08-12",
+        "slotId": "slot-1789551357354",
+        "subjectId": "sub-1789551143086",
+        "status": "activity",
+        "reason": "วันแม่",
+        "topic": "",
+        "notes": ""
+      },
+      {
+        "id": "ovr-1789554031654",
+        "semesterId": "sem-2569-1",
+        "date": "2026-07-24",
+        "slotId": "slot-1789551419819",
+        "subjectId": "sub-1789551180623",
+        "status": "activity",
+        "reason": "งานถวายพระพร",
+        "topic": "",
+        "notes": ""
+      },
+      {
+        "id": "ovr-1789554472233",
+        "semesterId": "sem-2569-1",
+        "date": "2026-09-16",
+        "slotId": "slot-1789551321453",
+        "subjectId": "sub-1789551066034",
+        "status": "normal",
+        "reason": "",
+        "topic": "",
+        "notes": "ให้เคลียร์งานค้าง และแจ้งเดดไลน์ส่งงาน"
+      },
+      {
+        "id": "ovr-1789554479177",
+        "semesterId": "sem-2569-1",
+        "date": "2026-09-16",
+        "slotId": "slot-1789551357354",
+        "subjectId": "sub-1789551143086",
+        "status": "normal",
+        "reason": "",
+        "topic": "",
+        "notes": "ให้เคลียร์งานค้าง และแจ้งเดดไลน์ส่งงาน"
+      },
+      {
+        "id": "ovr-1789554489940",
+        "semesterId": "sem-2569-1",
+        "date": "2026-09-15",
+        "slotId": "slot-1789551294979",
+        "subjectId": "sub-1789550992034",
+        "status": "normal",
+        "reason": "",
+        "topic": "",
+        "notes": "ติว ให้เคลียร์งานค้าง และแจ้งเดดไลน์ส่งงาน"
+      },
+      {
+        "id": "ovr-1789554508771",
+        "semesterId": "sem-2569-1",
+        "date": "2026-09-14",
+        "slotId": "slot-1789551215759",
+        "subjectId": "sub-1789550883948",
+        "status": "normal",
+        "reason": "",
+        "topic": "",
+        "notes": "ติว ให้เคลียร์งานค้าง และแจ้งเดดไลน์ส่งงาน"
+      },
+      {
+        "id": "ovr-1789554513826",
+        "semesterId": "sem-2569-1",
+        "date": "2026-09-14",
+        "slotId": "slot-1789551254908",
+        "subjectId": "sub-1789550934017",
+        "status": "normal",
+        "reason": "",
+        "topic": "",
+        "notes": "ติว ให้เคลียร์งานค้าง และแจ้งเดดไลน์ส่งงาน"
+      },
+      {
+        "id": "ovr-1789615996022",
+        "semesterId": "sem-2569-1",
+        "date": "2026-05-26",
+        "slotId": "slot-1789551294979",
+        "subjectId": "sub-1789550992034",
+        "status": "activity",
+        "reason": "ประเมิน ObecCQA",
+        "topic": "",
+        "notes": ""
+      },
+      {
+        "id": "ovr-1789616385679",
+        "semesterId": "sem-2569-1",
+        "date": "2026-05-22",
+        "slotId": "slot-1789551419819",
+        "subjectId": "sub-1789551180623",
+        "status": "cancelled",
+        "reason": "เตรียม ObecCQA",
+        "topic": "",
+        "notes": "พานักเรียนทำความสะอาดแท่นวางพระ"
+      },
+      {
+        "id": "ovr-1789616429852",
+        "semesterId": "sem-2569-1",
+        "date": "2026-05-21",
+        "slotId": "slot-1789551390945",
+        "subjectId": "sub-1789551111475",
+        "status": "cancelled",
+        "reason": "เตรียม Obec",
+        "topic": "",
+        "notes": ""
+      },
+      {
+        "id": "ovr-1789616462769",
+        "semesterId": "sem-2569-1",
+        "date": "2026-05-25",
+        "slotId": "slot-1789551215759",
+        "subjectId": "sub-1789550883948",
+        "status": "cancelled",
+        "reason": "เตรียม Obec",
+        "topic": "",
+        "notes": ""
+      },
+      {
+        "id": "ovr-1789616868004",
+        "semesterId": "sem-2569-1",
+        "date": "2026-09-17",
+        "slotId": "slot-1789551390945",
+        "subjectId": "sub-1789551111475",
+        "status": "normal",
+        "reason": "",
+        "topic": "เข้าไปเช็คงาน เช็คชื่อ",
+        "notes": ""
+      },
+      {
+        "id": "ovr-1789626066723",
+        "semesterId": "sem-2569-1",
+        "date": "2026-09-21",
+        "slotId": "slot-1789551215759",
+        "subjectId": "sub-1789550883948",
+        "status": "normal",
+        "reason": "",
+        "topic": "ติวข้อสอบ",
+        "lessonPlan": "",
+        "prepChecklist": [],
+        "notes": ""
+      },
+      {
+        "id": "ovr-1789626097209",
+        "semesterId": "sem-2569-1",
+        "date": "2026-09-21",
+        "slotId": "slot-1789551254908",
+        "subjectId": "sub-1789550934017",
+        "status": "normal",
+        "reason": "",
+        "topic": "ติวข้อสอบ",
+        "lessonPlan": "",
+        "prepChecklist": [],
+        "notes": ""
+      },
+      {
+        "id": "ovr-1789626113686",
+        "semesterId": "sem-2569-1",
+        "date": "2026-09-22",
+        "slotId": "slot-1789551294979",
+        "subjectId": "sub-1789550992034",
+        "status": "normal",
+        "reason": "",
+        "topic": "ติวข้อสอบ และแจ้งคะแนนรายงาน",
+        "lessonPlan": "",
+        "prepChecklist": [],
+        "notes": ""
+      },
+      {
+        "id": "ovr-1789635310592",
+        "semesterId": "sem-2569-1",
+        "date": "2026-09-18",
+        "slotId": "slot-1789551419819",
+        "subjectId": "sub-1789551180623",
+        "status": "normal",
+        "reason": "",
+        "topic": "ติวข้อสอบ และตามงาน",
+        "lessonPlan": "",
+        "prepChecklist": [],
+        "notes": ""
+      }
+    ],
+    "multiDayEvents": [
+      {
+        "id": "mde-1789552465192",
+        "semesterId": "sem-2569-1",
+        "title": "สอบปลายภาค",
+        "startDate": "2026-09-28",
+        "endDate": "2026-09-30",
+        "type": "activity",
+        "cancelClasses": true,
+        "colorId": "rose",
+        "notes": ""
+      },
+      {
+        "id": "mde-1789553090436",
+        "semesterId": "sem-2569-1",
+        "title": "บุญบั้งไฟ",
+        "startDate": "2026-06-16",
+        "endDate": "2026-06-19",
+        "type": "activity",
+        "cancelClasses": true,
+        "colorId": "teal",
+        "notes": ""
+      },
+      {
+        "id": "mde-1789553576285",
+        "semesterId": "sem-2569-1",
+        "title": "หยุดวันนขตฤก หยุดชดเชยวิสาข และ วันเกิดพระนางเจ้าสุทิดา",
+        "startDate": "2026-06-01",
+        "endDate": "2026-06-03",
+        "type": "activity",
+        "cancelClasses": true,
+        "colorId": "sky",
+        "notes": ""
+      },
+      {
+        "id": "mde-1789554109763",
+        "semesterId": "sem-2569-1",
+        "title": "วันอาสาฬหบูชา",
+        "startDate": "2026-07-29",
+        "endDate": "2026-07-29",
+        "type": "holiday",
+        "cancelClasses": true,
+        "colorId": "amber",
+        "notes": ""
+      },
+      {
+        "id": "mde-1789554132322",
+        "semesterId": "sem-2569-1",
+        "title": "วันอาสาฬหบูชา",
+        "startDate": "2026-07-28",
+        "endDate": "2026-07-28",
+        "type": "holiday",
+        "cancelClasses": true,
+        "colorId": "amber",
+        "notes": ""
+      },
+      {
+        "id": "mde-1789554152609",
+        "semesterId": "sem-2569-1",
+        "title": "วันหยุด ชดเชย",
+        "startDate": "2026-07-27",
+        "endDate": "2026-07-27",
+        "type": "holiday",
+        "cancelClasses": true,
+        "colorId": "amber",
+        "notes": ""
+      },
+      {
+        "id": "mde-1789614038742",
+        "semesterId": "sem-2569-1",
+        "title": "บุญบั้งไฟ",
+        "startDate": "2026-05-12",
+        "endDate": "2026-05-15",
+        "type": "activity",
+        "cancelClasses": true,
+        "colorId": "amber",
+        "notes": ""
+      },
+      {
+        "id": "mde-1789616327961",
+        "semesterId": "sem-2569-1",
+        "title": "ยังไม่มีหนังสือ",
+        "startDate": "2026-05-18",
+        "endDate": "2026-05-20",
+        "type": "cancelled",
+        "cancelClasses": true,
+        "colorId": "rose",
+        "notes": ""
+      }
+    ],
+    "shortNotes": [
+      {
+        "id": "note-1789626034308",
+        "subjectId": "sub-1789550883948",
+        "title": "กิตติทัต ขอส่งงานทั้งหมดวันนี้",
+        "dueDate": "2026-09-21",
+        "duePeriod": "ในคาบเรียน",
+        "description": "",
+        "isCompleted": false,
+        "createdAt": "2026-09-17T06:20:34.308Z",
+        "completedAt": null
+      },
+      {
+        "id": "note-1789619391800",
+        "subjectId": "sub-1789551143086",
+        "title": "ส่งงานทุกอย่าง",
+        "dueDate": "2026-09-18",
+        "duePeriod": "ตลอดทั้งวัน",
+        "description": "",
+        "isCompleted": false,
+        "createdAt": "2026-09-17T04:29:51.800Z",
+        "completedAt": null
+      }
+    ],
+    "activeSemesterId": "sem-2569-1"
+  }
+}
