@@ -10,7 +10,12 @@ import {
   Sun,
   ChevronDown,
   BarChart3,
-  Bell
+  Bell,
+  Cloud,
+  Check,
+  Loader2,
+  LogOut,
+  User
 } from 'lucide-react';
 import NotificationDropdown from './ShortNotes/NotificationDropdown';
 import { toDateString } from '../utils/dateUtils';
@@ -37,6 +42,10 @@ export default function Navbar({
   onOpenSession,
   isNotificationOpen,
   setIsNotificationOpen,
+  user = null,
+  onSignOut,
+  syncStatus = 'saved',
+  isDemoMode = false,
 }) {
   const activeSemester = semesters.find(s => s.id === activeSemesterId) || semesters[0];
   const todayStr = toDateString(new Date());
@@ -213,6 +222,68 @@ export default function Navbar({
                 <Moon className="w-5 h-5 text-slate-600" />
               )}
             </button>
+
+            {/* Cloud Sync Status */}
+            {user && (
+              <div 
+                className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
+                title={syncStatus === 'saving' ? 'กำลังบันทึกข้อมูลขึ้น Cloud...' : syncStatus === 'error' ? 'บันทึกขึ้น Cloud ไม่สำเร็จ' : 'ข้อมูลซิงค์กับ Cloud แล้ว'}
+              >
+                {syncStatus === 'saving' ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-500" />
+                    <span className="text-[11px]">กำลังซิงค์</span>
+                  </>
+                ) : syncStatus === 'error' ? (
+                  <>
+                    <Cloud className="w-3.5 h-3.5 text-rose-500" />
+                    <span className="text-[11px] text-rose-600 dark:text-rose-400">ซิงค์ผิดพลาด</span>
+                  </>
+                ) : (
+                  <>
+                    <Cloud className="w-3.5 h-3.5 text-emerald-500" />
+                    <span className="text-[11px] text-emerald-600 dark:text-emerald-400">คลาวด์</span>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* User Profile / Logout */}
+            {user ? (
+              <div className="flex items-center gap-2 pl-2 border-l border-slate-200 dark:border-slate-800">
+                <div 
+                  className="flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-200"
+                  title={user.email}
+                >
+                  <div className="w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
+                    {user.email ? user.email[0].toUpperCase() : <User className="w-3.5 h-3.5" />}
+                  </div>
+                  <span className="hidden xl:inline max-w-[120px] truncate">
+                    {user.email?.split('@')[0]}
+                  </span>
+                </div>
+                <button
+                  onClick={onSignOut}
+                  title="ออกจากระบบ (Sign Out)"
+                  className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
+            ) : isDemoMode && (
+              <div className="flex items-center gap-2 pl-2 border-l border-slate-200 dark:border-slate-800">
+                <span className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/50 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-800">
+                  Offline
+                </span>
+                <button
+                  onClick={onSignOut}
+                  title="กลับไปหน้าเข้าสู่ระบบ"
+                  className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+                >
+                  เข้าสู่ระบบ
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

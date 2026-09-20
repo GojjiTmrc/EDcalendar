@@ -10,17 +10,28 @@ import SemesterModal from './components/Semesters/SemesterModal';
 import BackupModal from './components/Backup/BackupModal';
 import ShortNoteModal from './components/ShortNotes/ShortNoteModal';
 import DueAlertBanner from './components/ShortNotes/DueAlertBanner';
+import AuthScreen from './components/Auth/AuthScreen';
+import { Loader2, GraduationCap, Plus } from 'lucide-react';
+import { supabase, signOut } from './services/supabaseClient';
 
 import {
   loadData,
   saveData,
+  loadCloudData,
+  debouncedSaveCloudData,
   resetData,
   loadTheme,
   saveTheme,
 } from './services/storage';
 
 export default function App() {
-  // State from LocalStorage
+  // Auth & Cloud State
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [syncStatus, setSyncStatus] = useState('saved'); // 'saved' | 'saving' | 'error'
+  const [isDemoMode, setIsDemoMode] = useState(false);
+
+  // State from Storage / Cloud
   const [data, setData] = useState(() => loadData());
   const [theme, setTheme] = useState(() => loadTheme());
   const [activeTab, setActiveTab] = useState('timetable'); // 'timetable' | 'calendar'
@@ -48,17 +59,89 @@ export default function App() {
     saveTheme(theme);
   }, [theme]);
 
-  // Sync data to storage whenever it changes
+  // Listen to Supabase Auth State
+  useEffect(() => {
+    if (!supabase) {
+      setAuthLoading(false);
+      return;
+    }
+
+    // Get current session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setAuthLoading(false);
+    }).catch(() => {
+      setAuthLoading(false);
+    });
+
+    // Listen for auth changes (login, logout, token refresh)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      setAuthLoading(false);
+    });
+
+    return () => {
+      subscription?.unsubscribe();
+    };
+  }, []);
+
+  // Fetch Cloud Data when user logs in
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchUserData() {
+      if (user) {
+        setSyncStatus('saving');
+        try {
+          const cloudData = await loadCloudData(user.id);
+          if (isMounted) {
+            setData(cloudData);
+            setSyncStatus('saved');
+          }
+        } catch (err) {
+          console.error('Error fetching user data:', err);
+          if (isMounted) setSyncStatus('error');
+        }
+      } else if (isDemoMode) {
+        setData(loadData());
+      }
+    }
+
+    if (!authLoading) {
+      fetchUserData();
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user, isDemoMode, authLoading]);
+
+  // Sync data to storage / cloud whenever it changes
   const updateData = (updater) => {
     setData((prev) => {
       const next = typeof updater === 'function' ? updater(prev) : updater;
-      saveData(next);
+      if (user) {
+        debouncedSaveCloudData(user.id, next, setSyncStatus);
+      } else {
+        saveData(next);
+      }
       return next;
     });
   };
 
+  const handleSignOut = async () => {
+    try {
+      if (supabase) {
+        await signOut();
+      }
+    } catch (err) {
+      console.error('Sign out error:', err);
+    }
+    setUser(null);
+    setIsDemoMode(false);
+  };
+
   // Active semester
-  const activeSemester = data.semesters.find(s => s.id === data.activeSemesterId) || data.semesters[0];
+  const activeSemester = (data.semesters || []).find(s => s.id === data.activeSemesterId) || (data.semesters || [])[0];
 
   // ------------------ Timetable Slot Handlers ------------------
   const handleOpenAddSlot = (dayOfWeek = 1, periodNumber = 1) => {
@@ -298,6 +381,19 @@ export default function App() {
     });
   };
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-300 font-sans">
+        <Loader2 className="w-10 h-10 animate-spin text-indigo-600 mb-4" />
+        <p className="text-sm font-medium">กำลังเตรียมระบบ EDcalendar...</p>
+      </div>
+    );
+  }
+
+  if (!user && !isDemoMode) {
+    return <AuthScreen onDemoMode={() => setIsDemoMode(true)} />;
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-50/50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
       
@@ -305,7 +401,7 @@ export default function App() {
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        semesters={data.semesters}
+        semesters={data.semesters || []}
         activeSemesterId={data.activeSemesterId}
         setActiveSemesterId={handleSelectSemester}
         theme={theme}
@@ -324,6 +420,10 @@ export default function App() {
         onOpenSession={() => setActiveTab('calendar')}
         isNotificationOpen={isNotificationOpen}
         setIsNotificationOpen={setIsNotificationOpen}
+        user={user}
+        onSignOut={handleSignOut}
+        syncStatus={syncStatus}
+        isDemoMode={isDemoMode}
       />
 
       {/* Due & Prep Alert Banner */}
@@ -339,44 +439,67 @@ export default function App() {
 
       {/* Main Content Body */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {activeTab === 'timetable' && (
-          <TimetableGrid
-            slots={data.slots}
-            subjects={data.subjects}
-            activeSemester={activeSemester}
-            onAddSlot={handleOpenAddSlot}
-            onEditSlot={handleOpenEditSlot}
-            onPrint={() => setIsPrintModalOpen(true)}
-          />
-        )}
-        
-        {activeTab === 'calendar' && (
-          <TeachingCalendar
-            semester={activeSemester}
-            slots={data.slots}
-            subjects={data.subjects}
-            overrides={data.overrides}
-            multiDayEvents={data.multiDayEvents || []}
-            shortNotes={data.shortNotes || []}
-            onSaveOverride={handleSaveOverride}
-            onResetOverride={handleResetOverride}
-            onDeleteCustomSession={handleDeleteCustomSession}
-            onSaveMultiDayEvent={handleSaveMultiDayEvent}
-            onDeleteMultiDayEvent={handleDeleteMultiDayEvent}
-            onOpenAddShortNote={handleOpenAddShortNote}
-            onOpenEditShortNote={handleOpenEditShortNote}
-            onToggleCompleteShortNote={handleToggleCompleteShortNote}
-          />
-        )}
+        {(!data.semesters || data.semesters.length === 0) ? (
+          <div className="max-w-xl mx-auto my-12 p-8 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm text-center">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shadow-inner">
+              <GraduationCap className="w-8 h-8" />
+            </div>
+            <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 mb-2">
+              ยินดีต้อนรับสู่ EDcalendar
+            </h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 leading-relaxed">
+              คุณยังไม่มีภาคเรียนในระบบ เริ่มต้นสร้างภาคเรียนแรกของคุณ (เช่น ภาคเรียนที่ 1/2569) เพื่อเริ่มเพิ่มรายวิชาและจัดตารางสอนออนไลน์
+            </p>
+            <button
+              onClick={() => setIsSemesterModalOpen(true)}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-sm font-medium rounded-xl shadow-md shadow-indigo-500/25 transition-all"
+            >
+              <Plus className="w-4 h-4" />
+              <span>+ สร้างภาคเรียนแรกของคุณ</span>
+            </button>
+          </div>
+        ) : (
+          <>
+            {activeTab === 'timetable' && (
+              <TimetableGrid
+                slots={data.slots}
+                subjects={data.subjects}
+                activeSemester={activeSemester}
+                onAddSlot={handleOpenAddSlot}
+                onEditSlot={handleOpenEditSlot}
+                onPrint={() => setIsPrintModalOpen(true)}
+              />
+            )}
+            
+            {activeTab === 'calendar' && (
+              <TeachingCalendar
+                semester={activeSemester}
+                slots={data.slots}
+                subjects={data.subjects}
+                overrides={data.overrides}
+                multiDayEvents={data.multiDayEvents || []}
+                shortNotes={data.shortNotes || []}
+                onSaveOverride={handleSaveOverride}
+                onResetOverride={handleResetOverride}
+                onDeleteCustomSession={handleDeleteCustomSession}
+                onSaveMultiDayEvent={handleSaveMultiDayEvent}
+                onDeleteMultiDayEvent={handleDeleteMultiDayEvent}
+                onOpenAddShortNote={handleOpenAddShortNote}
+                onOpenEditShortNote={handleOpenEditShortNote}
+                onToggleCompleteShortNote={handleToggleCompleteShortNote}
+              />
+            )}
 
-        {activeTab === 'summary' && (
-          <TeachingSummary
-            semester={activeSemester}
-            slots={data.slots}
-            subjects={data.subjects}
-            overrides={data.overrides}
-            multiDayEvents={data.multiDayEvents || []}
-          />
+            {activeTab === 'summary' && (
+              <TeachingSummary
+                semester={activeSemester}
+                slots={data.slots}
+                subjects={data.subjects}
+                overrides={data.overrides}
+                multiDayEvents={data.multiDayEvents || []}
+              />
+            )}
+          </>
         )}
       </main>
 
@@ -386,7 +509,7 @@ export default function App() {
           <div className="flex items-center gap-2">
             <span className="font-semibold text-slate-700 dark:text-slate-300">EDcalendar</span>
             <span>•</span>
-            <span>ระบบจัดการตารางสอนและปฏิทินการสอน (Local-first)</span>
+            <span>ระบบจัดการตารางสอนและปฏิทินการสอนออนไลน์ (Cloud Sync)</span>
           </div>
           <div className="flex items-center gap-4">
             <button
