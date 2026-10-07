@@ -39,10 +39,13 @@ export default function AuthScreen({ onDemoMode }) {
 
   // Settings modal / collapsible state
   const [showSettings, setShowSettings] = useState(false);
+  const [showGoogleGuide, setShowGoogleGuide] = useState(false);
+  const [copiedCallback, setCopiedCallback] = useState(false);
   const currentConfig = getSupabaseConfig();
   const [customUrl, setCustomUrl] = useState(currentConfig.url || '');
   const [customKey, setCustomKey] = useState(currentConfig.key || '');
   const [settingsMsg, setSettingsMsg] = useState('');
+  const callbackUrl = (currentConfig.url ? `${currentConfig.url}/auth/v1/callback` : 'https://jrkuxliltxxdtkusdjmw.supabase.co/auth/v1/callback');
 
   const isConfigured = isSupabaseConfigured();
 
@@ -289,8 +292,20 @@ export default function AuthScreen({ onDemoMode }) {
           <div className="mb-4 p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs">
             <div className="flex items-center gap-2">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              <span className="font-medium">{errorMsg}</span>
+              <span className="font-medium leading-relaxed">{errorMsg}</span>
             </div>
+            {errorMsg.includes('Google') && (
+              <div className="mt-2.5 pt-2 border-t border-rose-200/60 dark:border-rose-800/60 flex items-center justify-between">
+                <span className="text-[11px] text-rose-600/80 dark:text-rose-400">วิธีตั้งค่าให้ใช้ Google ได้:</span>
+                <button
+                  type="button"
+                  onClick={() => setShowGoogleGuide(true)}
+                  className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md font-medium text-[11px] transition-colors shadow-sm"
+                >
+                  ดูวิธีตั้งค่า 3 ขั้นตอน →
+                </button>
+              </div>
+            )}
             {isNetworkFailure && onDemoMode && (
               <div className="mt-2.5 pt-2 border-t border-rose-200/60 dark:border-rose-800/60 flex items-center justify-between">
                 <span className="text-[11px] text-rose-600/80 dark:text-rose-400">เข้าใช้งานตารางสอนต่อโดยไม่ต้องรอคลาวด์:</span>
@@ -525,6 +540,91 @@ export default function AuthScreen({ onDemoMode }) {
           <span>ข้อมูลปลอดภัย แยกพื้นที่จัดเก็บรายบุคคล (RLS)</span>
         </div>
       </div>
+
+      {/* Google Setup Guide Modal */}
+      {showGoogleGuide && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-lg w-full shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm sm:text-base flex items-center gap-2">
+                <span className="p-1 rounded-lg bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400">
+                  <ExternalLink className="w-4 h-4" />
+                </span>
+                วิธีเปิดใช้งานเข้าสู่ระบบด้วย Google บน Supabase
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowGoogleGuide(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+              การล็อกอินด้วย Google จำเป็นต้องผูกกับ OAuth Client ของ Google Cloud เพื่อความปลอดภัย ทำตาม 3 ขั้นตอนนี้ (ใช้เวลา ~2 นาที):
+            </p>
+
+            <div className="space-y-3 text-xs">
+              {/* Step 1 */}
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60">
+                <div className="font-semibold text-slate-700 dark:text-slate-200 mb-1">
+                  1. คัดลอก Callback URL ของ Supabase
+                </div>
+                <div className="flex items-center gap-2 mt-1.5">
+                  <input
+                    type="text"
+                    readOnly
+                    value={callbackUrl}
+                    className="flex-1 px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-[11px] font-mono text-slate-700 dark:text-slate-300 select-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(callbackUrl);
+                      setCopiedCallback(true);
+                      setTimeout(() => setCopiedCallback(false), 2000);
+                    }}
+                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-medium transition-colors"
+                  >
+                    {copiedCallback ? 'คัดลอกแล้ว!' : 'คัดลอก'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Step 2 */}
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60">
+                <div className="font-semibold text-slate-700 dark:text-slate-200 mb-1">
+                  2. สร้าง OAuth Client ID ใน Google Cloud Console
+                </div>
+                <p className="text-slate-500 dark:text-slate-400 text-[11px] leading-relaxed mb-2">
+                  เข้าสู่ <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer" className="text-indigo-600 dark:text-indigo-400 underline">Google Cloud Console</a> &gt; กด <b>Create Credentials</b> &gt; เลือก <b>OAuth client ID</b> &gt; ประเภท <b>Web application</b> &gt; นำ Callback URL จากข้อ 1 ไปวางในช่อง <b>Authorized redirect URIs</b>
+                </p>
+              </div>
+
+              {/* Step 3 */}
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60">
+                <div className="font-semibold text-slate-700 dark:text-slate-200 mb-1">
+                  3. เปิดสวิตช์และบันทึกใน Supabase Dashboard
+                </div>
+                <p className="text-slate-500 dark:text-slate-400 text-[11px] leading-relaxed">
+                  ไปที่ <a href="https://supabase.com/dashboard/project/jrkuxliltxxdtkusdjmw/auth/providers" target="_blank" rel="noreferrer" className="text-indigo-600 dark:text-indigo-400 underline">Supabase &gt; Authentication &gt; Providers &gt; Google</a> &gt; เปิดสวิตช์ <b>Enable Google provider</b> &gt; วาง Client ID และ Client Secret แล้วกด <b>Save</b>
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-2 flex items-center justify-end">
+              <button
+                type="button"
+                onClick={() => setShowGoogleGuide(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-medium transition-colors"
+              >
+                เข้าใจแล้ว / ปิดหน้าต่าง
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
