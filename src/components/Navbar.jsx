@@ -85,7 +85,7 @@ export default function Navbar({
                 <span className="font-bold text-lg text-slate-900 dark:text-white tracking-tight">
                   ED<span className="text-indigo-600 dark:text-indigo-400">calendar</span>
                 </span>
-                <span className="text-[11px] font-medium bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 px-2 py-0.5 rounded-full border border-indigo-200 dark:border-indigo-800">
+                <span className="hidden sm:inline-block text-[11px] font-medium bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 px-2 py-0.5 rounded-full border border-indigo-200 dark:border-indigo-800">
                   สำหรับครูอาจารย์
                 </span>
               </div>
@@ -140,7 +140,7 @@ export default function Navbar({
           </nav>
 
           {/* Right Action Tools */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             {activeTab === 'timetable' && (
               <button
                 onClick={onPrintTimetable}
@@ -155,16 +155,16 @@ export default function Navbar({
             <button
               onClick={onOpenSubjects}
               title="จัดการรายชื่อวิชา"
-              className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors border border-slate-200 dark:border-slate-700"
+              className="hidden md:flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors border border-slate-200 dark:border-slate-700"
             >
               <BookOpen className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-              <span className="hidden md:inline">รายวิชา</span>
+              <span>รายวิชา</span>
             </button>
 
             <button
               onClick={onOpenBackup}
               title="สำรองและกู้คืนข้อมูล (Export / Import)"
-              className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors border border-slate-200 dark:border-slate-700"
+              className="hidden md:flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors border border-slate-200 dark:border-slate-700"
             >
               <Download className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
               <span className="hidden lg:inline">สำรองข้อมูล</span>
