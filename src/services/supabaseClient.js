@@ -87,35 +87,43 @@ export const supabase = initSupabase();
 export async function signInWithGoogle() {
   if (!supabase) throw new Error('ยังไม่ได้กำหนดค่า Supabase URL และ Key');
 
-  // Check provider status first to prevent raw 400 black screen
-  const { url, key } = getSupabaseConfig();
-  if (url && key) {
-    try {
-      const settingsRes = await fetch(`${url}/auth/v1/settings`, {
-        headers: { apikey: key },
-      });
-      if (settingsRes.ok) {
-        const settings = await settingsRes.json();
-        if (settings?.external && settings.external.google === false) {
-          throw new Error('GOOGLE_PROVIDER_DISABLED');
-        }
-      }
-    } catch (checkErr) {
-      if (checkErr.message === 'GOOGLE_PROVIDER_DISABLED') {
-        throw new Error('ระบบเข้าสู่ระบบด้วย Google ยังไม่ได้เปิดใช้งานใน Supabase Dashboard (กรุณาไปที่ Authentication > Providers > Google เพื่อเปิดใช้งาน หรือเข้าสู่ระบบด้วยอีเมลแทน)');
-      }
-      // If network check fails, continue to let OAuth try
-    }
-  }
-
   try {
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
         redirectTo: window.location.origin,
+        skipBrowserRedirect: true,
       },
     });
+
     if (error) throw error;
+
+    if (data?.url) {
+      try {
+        const probeRes = await fetch(data.url, { method: 'GET' });
+        if (!probeRes.ok) {
+          const errJson = await probeRes.json().catch(() => ({}));
+          if (errJson.msg?.includes('missing OAuth secret')) {
+            throw new Error('MISSING_OAUTH_SECRET');
+          }
+          if (errJson.msg?.includes('provider is not enabled')) {
+            throw new Error('PROVIDER_DISABLED');
+          }
+          throw new Error(errJson.msg || 'เกิดข้อผิดพลาดในการตรวจสอบ Google OAuth');
+        }
+        // If ok, redirect
+        window.location.href = data.url;
+      } catch (probeErr) {
+        if (probeErr.message === 'MISSING_OAUTH_SECRET') {
+          throw new Error('ยังไม่ได้ใส่ "Client Secret" ใน Supabase Dashboard (กรุณานำ Client Secret จาก Google Cloud มาใส่ในช่อง Client Secret ของ Supabase แล้วกด Save)');
+        }
+        if (probeErr.message === 'PROVIDER_DISABLED') {
+          throw new Error('ระบบเข้าสู่ระบบด้วย Google ยังไม่ได้เปิดใช้งานใน Supabase Dashboard (กรุณาไปที่ Authentication > Providers > Google เพื่อเปิดใช้งาน)');
+        }
+        // If fetch was blocked by CORS due to successful redirect to accounts.google.com, navigate to it!
+        window.location.href = data.url;
+      }
+    }
     return data;
   } catch (err) {
     const msg = err.message || '';
