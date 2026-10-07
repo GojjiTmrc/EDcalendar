@@ -1,6 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Clock, MapPin, Users, BookOpen, Printer, Settings, Filter, Sparkles, AlertCircle, Edit3 } from 'lucide-react';
-import { SCHOOL_DAYS, timeToMinutes, formatDurationThai } from '../../utils/dateUtils';
+import { 
+  Plus, 
+  Clock, 
+  MapPin, 
+  Users, 
+  BookOpen, 
+  Printer, 
+  Settings, 
+  Filter, 
+  Sparkles, 
+  AlertCircle, 
+  Edit3,
+  Smartphone,
+  LayoutGrid,
+  ChevronRight
+} from 'lucide-react';
+import { SCHOOL_DAYS, timeToMinutes, formatDurationThai, jsDayToThaiDay } from '../../utils/dateUtils';
 import { getColorById } from '../../utils/colors';
 import {
   DEFAULT_PERIODS,
@@ -22,6 +37,13 @@ export default function TimetableGrid({
   const [periods, setPeriods] = useState(() => getStoredPeriods());
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [selectedSubjectFilter, setSelectedSubjectFilter] = useState('all');
+
+  // Mobile responsive view modes: 'daily' (vertical cards by day) | 'matrix' (full horizontal scroll table)
+  const [mobileViewMode, setMobileViewMode] = useState('daily');
+  const [selectedDay, setSelectedDay] = useState(() => {
+    const todayNum = jsDayToThaiDay(new Date().getDay());
+    return todayNum >= 1 && todayNum <= 5 ? todayNum : 1;
+  });
 
   const subjectMap = new Map(subjects.map(s => [s.id, s]));
 
@@ -80,6 +102,34 @@ export default function TimetableGrid({
 
         {/* Action Controls */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* Mobile View Switcher (Daily Cards vs Full Matrix) */}
+          <div className="flex md:hidden items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 text-xs w-full sm:w-auto justify-center mb-1 sm:mb-0">
+            <button
+              type="button"
+              onClick={() => setMobileViewMode('daily')}
+              className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-all ${
+                mobileViewMode === 'daily'
+                  ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-white shadow-xs font-semibold'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+              }`}
+            >
+              <Smartphone className="w-3.5 h-3.5" />
+              <span>การ์ดรายวัน</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setMobileViewMode('matrix')}
+              className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-all ${
+                mobileViewMode === 'matrix'
+                  ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-white shadow-xs font-semibold'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+              }`}
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              <span>ตารางรวม</span>
+            </button>
+          </div>
+
           {/* Filter by subject */}
           <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-300">
             <Filter className="w-3.5 h-3.5 text-slate-400" />
@@ -102,13 +152,13 @@ export default function TimetableGrid({
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-xl border border-slate-200 dark:border-slate-700 transition-colors"
           >
             <Settings className="w-3.5 h-3.5 text-slate-500" />
-            <span>ตั้งค่าเวลาคาบ</span>
+            <span className="hidden sm:inline">ตั้งค่าเวลาคาบ</span>
           </button>
 
           {/* Print button */}
           <button
             onClick={onPrint}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-xl border border-slate-200 dark:border-slate-700 transition-colors"
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-xl border border-slate-200 dark:border-slate-700 transition-colors"
           >
             <Printer className="w-3.5 h-3.5 text-indigo-500" />
             <span>พิมพ์ / PDF</span>
@@ -116,8 +166,8 @@ export default function TimetableGrid({
 
           {/* Add Slot Button */}
           <button
-            onClick={() => onAddSlot(1, 1)}
-            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-md shadow-indigo-500/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
+            onClick={() => onAddSlot(selectedDay, 1)}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 sm:py-2 text-xs font-medium bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-md shadow-indigo-500/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>เพิ่มคาบสอน</span>
@@ -125,55 +175,234 @@ export default function TimetableGrid({
         </div>
       </div>
 
-      {/* Summary KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
-            <Clock className="w-5 h-5" />
+      {/* Summary KPI Cards (Responsive 2x2 on mobile, 4 columns on lg) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
+        <div className="bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-2.5 sm:gap-3">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+            <Clock className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
           <div>
-            <div className="text-2xl font-bold text-slate-900 dark:text-white">{totalSlotsCount}</div>
-            <div className="text-xs text-slate-500 dark:text-slate-400">คาบสอนต่อสัปดาห์</div>
+            <div className="text-lg sm:text-2xl font-bold text-slate-900 dark:text-white">{totalSlotsCount}</div>
+            <div className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">คาบสอนต่อสัปดาห์</div>
           </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-            <Sparkles className="w-5 h-5" />
+        <div className="bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-2.5 sm:gap-3">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+            <Sparkles className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
           <div>
-            <div className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">
+            <div className="text-base sm:text-2xl font-bold text-slate-900 dark:text-white">
               {hoursPart} ชม. {minsPart > 0 ? `${minsPart} น.` : ''}
             </div>
-            <div className="text-xs text-slate-500 dark:text-slate-400">เวลาสอนรวมต่อสัปดาห์</div>
+            <div className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">เวลาสอนรวม</div>
           </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-            <BookOpen className="w-5 h-5" />
+        <div className="bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-2.5 sm:gap-3">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+            <BookOpen className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
           <div>
-            <div className="text-2xl font-bold text-slate-900 dark:text-white">{uniqueSubjectsCount}</div>
-            <div className="text-xs text-slate-500 dark:text-slate-400">วิชาที่รับผิดชอบ</div>
+            <div className="text-lg sm:text-2xl font-bold text-slate-900 dark:text-white">{uniqueSubjectsCount}</div>
+            <div className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">วิชาที่รับผิดชอบ</div>
           </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
-            <Users className="w-5 h-5" />
+        <div className="bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-2.5 sm:gap-3">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
+            <Users className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
           <div>
-            <div className="text-2xl font-bold text-slate-900 dark:text-white">
-              5
-            </div>
-            <div className="text-xs text-slate-500 dark:text-slate-400">วันทำการ (จันทร์-ศุกร์)</div>
+            <div className="text-lg sm:text-2xl font-bold text-slate-900 dark:text-white">5 วัน</div>
+            <div className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">จันทร์ - ศุกร์</div>
           </div>
         </div>
       </div>
 
-      {/* MATRIX TIMETABLE GRID TABLE */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+      {/* MOBILE DAILY VIEW (Shown when mobileViewMode === 'daily' on small screens) */}
+      <div className={`md:hidden ${mobileViewMode === 'daily' ? 'block' : 'hidden'} space-y-3`}>
+        {/* Day Selector Tabs (จันทร์ - ศุกร์) */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+          {displayDays.map((d) => {
+            const daySlotsCount = filteredSlots.filter(s => s.dayOfWeek === d.index).length;
+            const isSelected = selectedDay === d.index;
+            return (
+              <button
+                key={d.index}
+                type="button"
+                onClick={() => setSelectedDay(d.index)}
+                className={`flex-1 min-w-[62px] py-2 px-1 rounded-xl text-center transition-all border flex flex-col items-center justify-center gap-0.5 ${
+                  isSelected
+                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                    : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:bg-slate-50'
+                }`}
+              >
+                <span className="text-xs font-bold">{d.short}</span>
+                <span className={`text-[10px] px-1.5 rounded-full font-medium ${
+                  isSelected
+                    ? 'bg-indigo-500/80 text-white'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                }`}>
+                  {daySlotsCount} คาบ
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Current Day Schedule Cards */}
+        <div className="space-y-2.5">
+          {(() => {
+            const curDaySlots = filteredSlots
+              .filter(s => s.dayOfWeek === selectedDay)
+              .sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
+
+            // Map slots to start period & span
+            const periodSlotMap = {};
+            for (const slot of curDaySlots) {
+              const mapping = getSlotPeriodMapping(slot, periods);
+              if (mapping) {
+                periodSlotMap[mapping.startPeriod] = { slot, span: mapping.span };
+              }
+            }
+
+            const timelineItems = [];
+            let skipUntil = 0;
+
+            for (const p of periods) {
+              if (p.isLunch) {
+                timelineItems.push(
+                  <div key="lunch" className="p-3 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-800/60 flex items-center justify-between text-xs text-amber-800 dark:text-amber-300">
+                    <div className="flex items-center gap-2 font-medium">
+                      <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                      <span>พักรับประทานอาหารกลางวัน</span>
+                    </div>
+                    <span className="text-[11px] font-mono text-amber-700 dark:text-amber-400">{p.startTime} - {p.endTime}</span>
+                  </div>
+                );
+                continue;
+              }
+
+              const pNum = p.period;
+              if (pNum < skipUntil) continue;
+
+              const slotInfo = periodSlotMap[pNum];
+              if (slotInfo) {
+                const { slot, span } = slotInfo;
+                skipUntil = pNum + span;
+                const subject = subjectMap.get(slot.subjectId) || {
+                  code: '???',
+                  name: 'ไม่พบวิชา',
+                  defaultRoom: '-',
+                  gradeGroup: '',
+                  colorId: 'indigo',
+                };
+                const color = getColorById(subject.colorId);
+                const room = slot.roomOverride || subject.defaultRoom;
+
+                timelineItems.push(
+                  <div
+                    key={pNum}
+                    onClick={() => onEditSlot(slot)}
+                    className={`p-3.5 rounded-2xl border transition-all cursor-pointer shadow-xs active:scale-[0.99] ${color.bg} ${color.border}`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold px-2 py-0.5 rounded-lg bg-white/80 dark:bg-slate-900/80 text-slate-800 dark:text-slate-200 border border-slate-200/50 dark:border-slate-700/50">
+                          คาบ {span > 1 ? `${pNum} - ${pNum + span - 1}` : pNum}
+                        </span>
+                        <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                          {slot.startTime} - {slot.endTime}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        {span > 1 && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-md font-bold bg-indigo-600 text-white">
+                            {span} คาบ
+                          </span>
+                        )}
+                        <Edit3 className="w-3.5 h-3.5 text-slate-400" />
+                      </div>
+                    </div>
+
+                    <div className="mt-2">
+                      <div className="font-bold text-sm text-slate-900 dark:text-white">
+                        {subject.code} {subject.name}
+                      </div>
+                      <div className="flex items-center gap-3 mt-1.5 text-xs text-slate-600 dark:text-slate-300">
+                        {subject.gradeGroup && (
+                          <div className="flex items-center gap-1">
+                            <Users className="w-3 h-3 text-slate-400" />
+                            <span>{subject.gradeGroup}</span>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-1">
+                          <MapPin className="w-3 h-3 text-slate-400" />
+                          <span>{room ? `ห้อง ${room}` : 'ไม่ระบุห้อง'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              } else {
+                // Empty period or activity
+                const isPeriod7 = pNum === 7;
+                const defaultActivity = isPeriod7 ? DEFAULT_ACTIVITIES[selectedDay] : null;
+
+                if (defaultActivity) {
+                  timelineItems.push(
+                    <div
+                      key={pNum}
+                      onClick={() => onAddSlot(selectedDay, pNum)}
+                      className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-dashed border-slate-300 dark:border-slate-700 flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 cursor-pointer hover:bg-slate-100"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                          คาบ {pNum}
+                        </span>
+                        <span>{defaultActivity.title} ({p.startTime} - {p.endTime})</span>
+                      </div>
+                      <Plus className="w-3.5 h-3.5 text-slate-400" />
+                    </div>
+                  );
+                } else {
+                  timelineItems.push(
+                    <div
+                      key={pNum}
+                      onClick={() => onAddSlot(selectedDay, pNum)}
+                      className="py-2.5 px-3 rounded-xl border border-dashed border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-700 flex items-center justify-between text-xs text-slate-400 hover:text-indigo-600 transition-colors cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-slate-400">คาบ {pNum}</span>
+                        <span className="text-[10px] font-mono text-slate-400">{p.startTime} - {p.endTime}</span>
+                        <span className="text-[11px] text-slate-400 group-hover:text-indigo-600">ว่าง (แตะเพื่อเพิ่ม)</span>
+                      </div>
+                      <Plus className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600" />
+                    </div>
+                  );
+                }
+              }
+            }
+
+            return timelineItems;
+          })()}
+        </div>
+      </div>
+
+      {/* MATRIX TIMETABLE GRID TABLE (Hidden on mobile if daily view is active) */}
+      <div className={`${mobileViewMode === 'daily' ? 'hidden md:block' : 'block'} bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden`}>
+        {/* Horizontal scroll hint on mobile */}
+        <div className="md:hidden flex items-center justify-between px-4 py-2 bg-indigo-50/60 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 text-xs border-b border-indigo-100 dark:border-indigo-900/50">
+          <span>👉 เลื่อนซ้าย-ขวา เพื่อดูตารางสอนให้ครบ 8 คาบ</span>
+          <button
+            type="button"
+            onClick={() => setMobileViewMode('daily')}
+            className="text-[11px] underline font-medium"
+          >
+            สลับเป็นการ์ดรายวัน
+          </button>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-xs min-w-[1050px]">
             {/* Header: Periods 1 to 8 + Lunch */}

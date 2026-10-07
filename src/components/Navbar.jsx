@@ -70,7 +70,8 @@ export default function Navbar({
   };
 
   return (
-    <header className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800 shadow-sm no-print">
+    <>
+      <header className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800 shadow-sm no-print">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           
@@ -102,7 +103,7 @@ export default function Navbar({
           </div>
 
           {/* Center Navigation Tabs */}
-          <nav className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl border border-slate-200/80 dark:border-slate-700">
+          <nav className="hidden md:flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl border border-slate-200/80 dark:border-slate-700">
             <button
               onClick={() => setActiveTab('timetable')}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
@@ -287,6 +288,62 @@ export default function Navbar({
           </div>
         </div>
       </div>
-    </header>
+      </header>
+
+      {/* Mobile Bottom Navigation Bar (md:hidden) */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 shadow-lg px-2 py-1.5 flex items-center justify-around no-print pb-safe">
+        <button
+          onClick={() => setActiveTab('timetable')}
+          className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all ${
+            activeTab === 'timetable'
+              ? 'text-indigo-600 dark:text-indigo-400 font-semibold'
+              : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+          }`}
+        >
+          <Clock className={`w-5 h-5 ${activeTab === 'timetable' ? 'stroke-[2.5]' : ''}`} />
+          <span className="text-[10px] mt-0.5">ตารางสอน</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('calendar')}
+          className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all ${
+            activeTab === 'calendar'
+              ? 'text-indigo-600 dark:text-indigo-400 font-semibold'
+              : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+          }`}
+        >
+          <CalendarIcon className={`w-5 h-5 ${activeTab === 'calendar' ? 'stroke-[2.5]' : ''}`} />
+          <span className="text-[10px] mt-0.5">ปฏิทินสอน</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('summary')}
+          className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all ${
+            activeTab === 'summary'
+              ? 'text-indigo-600 dark:text-indigo-400 font-semibold'
+              : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+          }`}
+        >
+          <BarChart3 className={`w-5 h-5 ${activeTab === 'summary' ? 'stroke-[2.5]' : ''}`} />
+          <span className="text-[10px] mt-0.5">สรุปผล</span>
+        </button>
+
+        <button
+          onClick={onOpenSubjects}
+          className="flex flex-col items-center justify-center py-1 px-3 rounded-xl text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-all"
+        >
+          <BookOpen className="w-5 h-5" />
+          <span className="text-[10px] mt-0.5">รายวิชา</span>
+        </button>
+
+        <button
+          onClick={onOpenBackup}
+          className="flex flex-col items-center justify-center py-1 px-3 rounded-xl text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all"
+        >
+          <Download className="w-5 h-5" />
+          <span className="text-[10px] mt-0.5">สำรอง</span>
+        </button>
+      </nav>
+    </>
   );
 }

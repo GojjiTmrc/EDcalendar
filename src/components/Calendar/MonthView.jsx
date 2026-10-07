@@ -31,8 +31,11 @@ export default function MonthView({
       {/* 5-Day Weekday Header (Monday - Friday) */}
       <div className="grid grid-cols-5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/50">
         {SCHOOL_WEEKDAY_NAMES.map((w, idx) => (
-          <div key={idx} className="py-2.5 text-center text-xs font-bold text-slate-700 dark:text-slate-300">
-            <span className={w.color}>{w.full}</span>
+          <div key={idx} className="py-2 sm:py-2.5 text-center text-xs font-bold text-slate-700 dark:text-slate-300">
+            <span className={w.color}>
+              <span className="sm:hidden">{w.short}</span>
+              <span className="hidden sm:inline">{w.full}</span>
+            </span>
           </div>
         ))}
       </div>
@@ -47,7 +50,7 @@ export default function MonthView({
           return (
             <div
               key={index}
-              className={`min-h-[125px] sm:min-h-[145px] p-1.5 sm:p-2 flex flex-col transition-colors group relative ${
+              className={`min-h-[100px] sm:min-h-[145px] p-1 sm:p-2 flex flex-col transition-colors group relative ${
                 !dayObj.isCurrentMonth
                   ? 'bg-slate-50/40 dark:bg-slate-950/40 text-slate-400 dark:text-slate-600'
                   : 'bg-white dark:bg-slate-900 hover:bg-slate-50/70 dark:hover:bg-slate-850'
