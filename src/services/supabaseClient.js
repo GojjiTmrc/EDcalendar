@@ -3,7 +3,11 @@ import { createClient } from '@supabase/supabase-js';
 const STORAGE_URL_KEY = 'edcalendar_custom_supabase_url';
 const STORAGE_KEY_KEY = 'edcalendar_custom_supabase_anon_key';
 
-// Read runtime config (prioritize localStorage custom keys, then env variables)
+// Production Supabase Project credentials provided by user
+const DEFAULT_SUPABASE_URL = 'https://jrkuxliltxxdtkusdjmw.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY = 'sb_publishable_bHNVIJpF75KLnZI7wCTjiQ_OJ5LPjvi';
+
+// Read runtime config (prioritize localStorage custom keys, then env variables, then default project)
 export function getSupabaseConfig() {
   const customUrl = typeof window !== 'undefined' ? (localStorage.getItem(STORAGE_URL_KEY) || '').trim() : '';
   const customKey = typeof window !== 'undefined' ? (localStorage.getItem(STORAGE_KEY_KEY) || '').trim() : '';
@@ -11,14 +15,14 @@ export function getSupabaseConfig() {
   const envUrl = (
     import.meta.env.VITE_SUPABASE_URL ||
     import.meta.env.NEXT_PUBLIC_SUPABASE_URL ||
-    ''
+    DEFAULT_SUPABASE_URL
   ).trim();
 
   const envKey = (
     import.meta.env.VITE_SUPABASE_ANON_KEY ||
     import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
     import.meta.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-    ''
+    DEFAULT_SUPABASE_ANON_KEY
   ).trim();
 
   const url = customUrl || envUrl;
@@ -30,12 +34,10 @@ export function getSupabaseConfig() {
 
 export const isSupabaseConfigured = () => {
   const { url, key } = getSupabaseConfig();
-  // Validates presence and filters out known placeholders or non-existent templates
   return Boolean(
     url &&
     key &&
-    !url.includes('your-project') &&
-    !url.includes('jrkuxliltxxdtkusdjmw')
+    !url.includes('your-project')
   );
 };
 
@@ -84,14 +86,22 @@ export const supabase = initSupabase();
 // Auth helper functions
 export async function signInWithGoogle() {
   if (!supabase) throw new Error('ยังไม่ได้กำหนดค่า Supabase URL และ Key');
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: {
-      redirectTo: window.location.origin,
-    },
-  });
-  if (error) throw error;
-  return data;
+  try {
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin,
+      },
+    });
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    const msg = err.message || '';
+    if (msg.includes('502') || msg.includes('Bad Gateway') || msg.includes('provider') || msg.includes('disabled')) {
+      throw new Error('ระบบเข้าสู่ระบบด้วย Google ยังไม่ได้เปิดใช้งานใน Supabase Dashboard (ไปที่ Authentication > Providers > Google เพื่อเปิด)');
+    }
+    throw err;
+  }
 }
 
 export async function signInWithEmail(email, password) {
