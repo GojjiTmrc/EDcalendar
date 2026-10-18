@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Calendar, 
   Mail, 
@@ -15,11 +15,15 @@ import {
   X,
   ExternalLink,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  AlertTriangle,
+  RefreshCw
 } from 'lucide-react';
 import { 
   isSupabaseConfigured, 
   getSupabaseConfig,
+  getSupabaseProjectRef,
+  checkSupabaseHealth,
   saveCustomSupabaseConfig,
   clearCustomSupabaseConfig,
   signInWithGoogle, 
@@ -40,14 +44,51 @@ export default function AuthScreen({ onDemoMode }) {
   // Settings modal / collapsible state
   const [showSettings, setShowSettings] = useState(false);
   const [showGoogleGuide, setShowGoogleGuide] = useState(false);
+  const [showResumeModal, setShowResumeModal] = useState(false);
+  const [serverStatus, setServerStatus] = useState('checking'); // 'checking' | 'online' | 'paused' | 'offline'
+  const [isCheckingServer, setIsCheckingServer] = useState(false);
   const [copiedCallback, setCopiedCallback] = useState(false);
+  
   const currentConfig = getSupabaseConfig();
+  const projectRef = getSupabaseProjectRef();
   const [customUrl, setCustomUrl] = useState(currentConfig.url || '');
   const [customKey, setCustomKey] = useState(currentConfig.key || '');
   const [settingsMsg, setSettingsMsg] = useState('');
   const callbackUrl = (currentConfig.url ? `${currentConfig.url}/auth/v1/callback` : 'https://jrkuxliltxxdtkusdjmw.supabase.co/auth/v1/callback');
 
   const isConfigured = isSupabaseConfigured();
+
+  const handleCheckHealth = async (showToast = false) => {
+    setIsCheckingServer(true);
+    try {
+      const res = await checkSupabaseHealth(3500);
+      if (res.ok) {
+        setServerStatus('online');
+        if (showToast) {
+          setSuccessMsg('เชื่อมต่อเซิร์ฟเวอร์ Supabase สำเร็จแล้ว!');
+          setErrorMsg('');
+          setShowResumeModal(false);
+        }
+      } else {
+        setServerStatus('paused');
+        if (showToast) {
+          setErrorMsg('เซิร์ฟเวอร์ Supabase ยังไม่พร้อมใช้งาน (หากเพิ่งกด Resume อาจต้องรอ 1-2 นาที)');
+        }
+      }
+    } catch {
+      setServerStatus('paused');
+    } finally {
+      setIsCheckingServer(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isConfigured) {
+      handleCheckHealth();
+    } else {
+      setServerStatus('offline');
+    }
+  }, [isConfigured]);
 
   const handleSaveSettings = (e) => {
     e.preventDefault();
@@ -73,8 +114,15 @@ export default function AuthScreen({ onDemoMode }) {
       await signInWithGoogle();
     } catch (err) {
       const msg = err.message || '';
-      if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('ERR_NAME_NOT_RESOLVED')) {
-        setErrorMsg('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ Supabase ได้ (โปรเจกต์อาจถูกระงับ หรือ URL ไม่ถูกต้อง)');
+      if (
+        msg === 'SUPABASE_UNREACHABLE' ||
+        msg.includes('Failed to fetch') ||
+        msg.includes('NetworkError') ||
+        msg.includes('ERR_NAME_NOT_RESOLVED')
+      ) {
+        setServerStatus('paused');
+        setErrorMsg('เซิร์ฟเวอร์ Supabase ไม่ตอบสนอง (โปรเจกต์อาจถูก Pause อัตโนมัติจากการไม่มีการใช้งานเกิน 7 วัน หรือ URL ผิดพลาด)');
+        setShowResumeModal(true);
       } else {
         setErrorMsg(msg || 'เกิดข้อผิดพลาดในการเชื่อมต่อกับ Google');
       }
@@ -164,7 +212,11 @@ export default function AuthScreen({ onDemoMode }) {
     }
   };
 
-  const isNetworkFailure = errorMsg.includes('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์') || errorMsg.includes('Failed to fetch');
+  const isNetworkFailure =
+    errorMsg.includes('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์') ||
+    errorMsg.includes('Failed to fetch') ||
+    errorMsg.includes('Pause') ||
+    serverStatus === 'paused';
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-slate-50 to-blue-50 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950 p-4 font-sans">
@@ -187,8 +239,30 @@ export default function AuthScreen({ onDemoMode }) {
           </div>
           <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100 flex items-center justify-center gap-2">
             EDcalendar
-            <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 font-medium">
-              {isConfigured ? 'Cloud' : 'Offline Ready'}
+            <span
+              onClick={() => {
+                if (serverStatus === 'paused') setShowResumeModal(true);
+              }}
+              title={serverStatus === 'paused' ? 'คลิกเพื่อดูวิธีปลด Pause' : ''}
+              className={`text-xs px-2 py-0.5 rounded-full font-medium transition-all ${
+                serverStatus === 'online'
+                  ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400'
+                  : serverStatus === 'paused'
+                  ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 cursor-pointer hover:bg-amber-200 ring-1 ring-amber-400/50'
+                  : serverStatus === 'checking'
+                  ? 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                  : 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400'
+              }`}
+            >
+              {serverStatus === 'online'
+                ? 'Cloud Active'
+                : serverStatus === 'paused'
+                ? 'Cloud Paused ⚠️'
+                : serverStatus === 'checking'
+                ? 'กำลังเชื่อมต่อ...'
+                : isConfigured
+                ? 'Cloud'
+                : 'Offline Ready'}
             </span>
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
@@ -287,6 +361,49 @@ export default function AuthScreen({ onDemoMode }) {
           </div>
         )}
 
+        {/* Warning if Supabase project is Paused / Unreachable */}
+        {isConfigured && serverStatus === 'paused' && (
+          <div className="mb-5 p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/80 text-amber-900 dark:text-amber-200 text-xs leading-relaxed shadow-sm">
+            <div className="flex items-center justify-between font-semibold mb-1">
+              <span className="flex items-center gap-1.5 text-amber-800 dark:text-amber-300">
+                <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+                เซิร์ฟเวอร์ Cloud ถูกพักการทำงาน (Paused)
+              </span>
+              <button
+                type="button"
+                onClick={() => handleCheckHealth(true)}
+                disabled={isCheckingServer}
+                className="text-[11px] px-2 py-0.5 rounded bg-amber-200/80 dark:bg-amber-800 hover:bg-amber-300 text-amber-900 dark:text-amber-100 flex items-center gap-1 transition-colors"
+                title="กดเพื่อตรวจสอบการเชื่อมต่อใหม่"
+              >
+                <RefreshCw className={`w-3 h-3 ${isCheckingServer ? 'animate-spin' : ''}`} />
+                <span>{isCheckingServer ? 'ตรวจ...' : 'ตรวจใหม่'}</span>
+              </button>
+            </div>
+            <p className="text-[11px] text-amber-800/90 dark:text-amber-300/90 mb-2.5">
+              Supabase Free จะหยุดทำงานอัตโนมัติหากไม่ได้ใช้งานเกิน 7 วัน ทำให้เข้าสู่ระบบด้วย Google ไม่ได้
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowResumeModal(true)}
+                className="flex-1 py-1.5 px-3 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white rounded-lg font-medium text-xs shadow-sm transition-colors text-center"
+              >
+                วิธีปลด Pause (Resume) →
+              </button>
+              {onDemoMode && (
+                <button
+                  type="button"
+                  onClick={onDemoMode}
+                  className="py-1.5 px-3 bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 hover:bg-amber-100 dark:hover:bg-slate-700 text-amber-900 dark:text-amber-200 rounded-lg font-medium text-xs transition-colors"
+                >
+                  เข้าโหมดออฟไลน์
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Feedback alerts */}
         {errorMsg && (
           <div className="mb-4 p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs">
@@ -294,7 +411,26 @@ export default function AuthScreen({ onDemoMode }) {
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
               <span className="font-medium leading-relaxed">{errorMsg}</span>
             </div>
-            {errorMsg.includes('Google') && (
+            {isNetworkFailure ? (
+              <div className="mt-2.5 pt-2 border-t border-rose-200/60 dark:border-rose-800/60 flex flex-wrap items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowResumeModal(true)}
+                  className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-md font-medium text-[11px] transition-colors shadow-sm"
+                >
+                  วิธีปลด Pause ใน Supabase →
+                </button>
+                {onDemoMode && (
+                  <button
+                    type="button"
+                    onClick={onDemoMode}
+                    className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-md font-medium text-[11px] transition-colors"
+                  >
+                    เข้าสู่โหมดออฟไลน์ →
+                  </button>
+                )}
+              </div>
+            ) : errorMsg.includes('Google') ? (
               <div className="mt-2.5 pt-2 border-t border-rose-200/60 dark:border-rose-800/60 flex items-center justify-between">
                 <span className="text-[11px] text-rose-600/80 dark:text-rose-400">วิธีตั้งค่าให้ใช้ Google ได้:</span>
                 <button
@@ -305,19 +441,7 @@ export default function AuthScreen({ onDemoMode }) {
                   ดูวิธีตั้งค่า 3 ขั้นตอน →
                 </button>
               </div>
-            )}
-            {isNetworkFailure && onDemoMode && (
-              <div className="mt-2.5 pt-2 border-t border-rose-200/60 dark:border-rose-800/60 flex items-center justify-between">
-                <span className="text-[11px] text-rose-600/80 dark:text-rose-400">เข้าใช้งานตารางสอนต่อโดยไม่ต้องรอคลาวด์:</span>
-                <button
-                  type="button"
-                  onClick={onDemoMode}
-                  className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-md font-medium text-[11px] transition-colors"
-                >
-                  เข้าสู่โหมดออฟไลน์ →
-                </button>
-              </div>
-            )}
+            ) : null}
           </div>
         )}
 
@@ -620,6 +744,113 @@ export default function AuthScreen({ onDemoMode }) {
                 className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-medium transition-colors"
               >
                 เข้าใจแล้ว / ปิดหน้าต่าง
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Resume Project Guide Modal */}
+      {showResumeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-lg w-full shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm sm:text-base flex items-center gap-2">
+                <span className="p-1 rounded-lg bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400">
+                  <AlertTriangle className="w-4 h-4" />
+                </span>
+                วิธีปลด Pause (Resume) โปรเจกต์ Supabase
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowResumeModal(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3 bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800/80 rounded-xl text-xs text-amber-900 dark:text-amber-200 leading-relaxed">
+              <p className="font-semibold mb-1">ทำไมหน้าเข้าสู่ระบบ Google ถึงเปิดไม่ได้ (DNS NXDOMAIN)?</p>
+              Supabase แพ็กเกจฟรีจะ <b>Pause (พักการทำงาน)</b> อัตโนมัติเมื่อโปรเจกต์ไม่มีการเรียกใช้งานนานเกิน 7 วัน ส่งผลให้โดเมน <code className="bg-amber-100 dark:bg-amber-900/60 px-1 py-0.5 rounded font-mono text-[11px]">{currentConfig.url || 'supabase.co'}</code> ปิดตัวชั่วคราว ข้อมูลในฐานข้อมูลยังปลอดภัย 100% เพียงแค่กด Restore ให้ระบบตื่นขึ้นมาใหม่
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="font-semibold text-slate-700 dark:text-slate-200">
+                ขั้นตอนการปลดล็อค (ใช้เวลา ~1-2 นาที):
+              </div>
+
+              {/* Step 1 */}
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60">
+                <div className="font-semibold text-slate-700 dark:text-slate-200 mb-1">
+                  1. เปิดหน้าแดชบอร์ดของโปรเจกต์ Supabase
+                </div>
+                <p className="text-slate-500 dark:text-slate-400 text-[11px] leading-relaxed mb-2.5">
+                  คลิกปุ่มด้านล่างเพื่อเปิดหน้าโปรเจกต์ของคุณบน Supabase ในแท็บใหม่
+                </p>
+                <a
+                  href={`https://supabase.com/dashboard/project/${projectRef || 'jrkuxliltxxdtkusdjmw'}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-medium shadow-sm transition-colors"
+                >
+                  <span>เปิดแดชบอร์ด Supabase</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              </div>
+
+              {/* Step 2 */}
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60">
+                <div className="font-semibold text-slate-700 dark:text-slate-200 mb-1">
+                  2. กดปุ่ม "Restore project" หรือ "Resume project"
+                </div>
+                <p className="text-slate-500 dark:text-slate-400 text-[11px] leading-relaxed">
+                  ที่แถบด้านบนของหน้าเว็บ Supabase จะมีแจ้งเตือนว่าโปรเจกต์ถูก Pause ให้คลิกปุ่ม <b>Restore</b> หรือ <b>Resume</b> แล้วรอระบบจัดสรรเซิร์ฟเวอร์ประมาณ 1-2 นาที จนกระทั่งสถานะเปลี่ยนเป็นสีเขียว (Active)
+                </p>
+              </div>
+
+              {/* Step 3 */}
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60">
+                <div className="font-semibold text-slate-700 dark:text-slate-200 mb-1">
+                  3. กลับมาที่หน้านี้แล้วกดปุ่มตรวจสอบสถานะ
+                </div>
+                <p className="text-slate-500 dark:text-slate-400 text-[11px] leading-relaxed mb-2.5">
+                  เมื่อระบบพร้อมใช้งานแล้ว สามารถกดปุ่มด้านล่างเพื่อเริ่มใช้งานเข้าสู่ระบบด้วย Google ต่อได้ทันที
+                </p>
+                <button
+                  type="button"
+                  onClick={() => handleCheckHealth(true)}
+                  disabled={isCheckingServer}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 shadow-sm"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isCheckingServer ? 'animate-spin' : ''}`} />
+                  <span>{isCheckingServer ? 'กำลังตรวจสอบ...' : 'ตรวจสอบการเชื่อมต่อเดี๋ยวนี้'}</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                {onDemoMode && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowResumeModal(false);
+                      onDemoMode();
+                    }}
+                    className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 font-medium"
+                  >
+                    <HardDrive className="w-3.5 h-3.5" />
+                    <span>เข้าใช้งานแบบออฟไลน์ทันที (ไม่ต้องรอ)</span>
+                  </button>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowResumeModal(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-medium transition-colors"
+              >
+                ปิดหน้าต่าง
               </button>
             </div>
           </div>

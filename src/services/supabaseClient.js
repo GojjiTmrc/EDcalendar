@@ -62,6 +62,62 @@ export function clearCustomSupabaseConfig() {
   }
 }
 
+export function getSupabaseProjectRef() {
+  const { url } = getSupabaseConfig();
+  if (!url) return '';
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname; // e.g. jrkuxliltxxdtkusdjmw.supabase.co
+    const parts = host.split('.');
+    if (parts.length >= 3 && parts[1] === 'supabase') {
+      return parts[0];
+    }
+    return '';
+  } catch {
+    return '';
+  }
+}
+
+export async function checkSupabaseHealth(timeoutMs = 4000) {
+  const { url, key } = getSupabaseConfig();
+  if (!url || !key) {
+    return { ok: false, reason: 'NOT_CONFIGURED', message: 'ยังไม่ได้ระบุ Supabase URL หรือ Key' };
+  }
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    // /auth/v1/health is a lightweight CORS-enabled endpoint on Supabase GoTrue
+    const res = await fetch(`${url}/auth/v1/health`, {
+      method: 'GET',
+      headers: {
+        apikey: key,
+      },
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+
+    if (res.ok) {
+      return { ok: true };
+    }
+
+    return {
+      ok: false,
+      reason: 'HTTP_ERROR',
+      status: res.status,
+      message: `เซิร์ฟเวอร์ Supabase ตอบกลับด้วยรหัส ${res.status}`,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      reason: 'UNREACHABLE',
+      error: err,
+      message: 'ไม่สามารถติดต่อเซิร์ฟเวอร์ Supabase ได้ (โปรเจกต์อาจถูกระงับชั่วคราว หรือ DNS ไม่พบ)',
+    };
+  }
+}
+
 function initSupabase() {
   const { url, key } = getSupabaseConfig();
   if (isSupabaseConfigured()) {
@@ -86,6 +142,12 @@ export const supabase = initSupabase();
 // Auth helper functions
 export async function signInWithGoogle() {
   if (!supabase) throw new Error('ยังไม่ได้กำหนดค่า Supabase URL และ Key');
+
+  // 1. Proactively test if Supabase server is alive (prevents browser redirecting to Chrome NXDOMAIN error page)
+  const health = await checkSupabaseHealth(3500);
+  if (!health.ok) {
+    throw new Error('SUPABASE_UNREACHABLE');
+  }
 
   try {
     const { data, error } = await supabase.auth.signInWithOAuth({
@@ -120,13 +182,19 @@ export async function signInWithGoogle() {
         if (probeErr.message === 'PROVIDER_DISABLED') {
           throw new Error('ระบบเข้าสู่ระบบด้วย Google ยังไม่ได้เปิดใช้งานใน Supabase Dashboard (กรุณาไปที่ Authentication > Providers > Google เพื่อเปิดใช้งาน)');
         }
-        // If fetch was blocked by CORS due to successful redirect to accounts.google.com, navigate to it!
+        if (probeErr.message && !probeErr.message.includes('fetch') && !probeErr.message.includes('NetworkError')) {
+          throw probeErr;
+        }
+        // Since health check already succeeded, CORS failure on GET means it was successfully redirected to accounts.google.com!
         window.location.href = data.url;
       }
     }
     return data;
   } catch (err) {
     const msg = err.message || '';
+    if (msg === 'SUPABASE_UNREACHABLE') {
+      throw err;
+    }
     if (msg.includes('502') || msg.includes('Bad Gateway') || msg.includes('provider') || msg.includes('disabled')) {
       throw new Error('ระบบเข้าสู่ระบบด้วย Google ยังไม่ได้เปิดใช้งานใน Supabase Dashboard (ไปที่ Authentication > Providers > Google เพื่อเปิด)');
     }
