@@ -6,14 +6,98 @@ import {
   INITIAL_MULTI_DAY_EVENTS,
   INITIAL_SHORT_NOTES,
 } from './sampleData';
-import { supabase, checkSupabaseHealth } from './supabaseClient';
+import { supabase, checkSupabaseHealth, CLOUD_FIRESTORE_BASE_URL } from './supabaseClient';
+import { getSemesterTerm } from './summaryService';
 
 const STORAGE_KEY = 'edcalendar_data_v1';
 const USER_STORAGE_PREFIX = 'edcalendar_user_data_';
 const THEME_KEY = 'edcalendar_theme';
+const REALTIME_CHANNEL_NAME = 'edcalendar_realtime_sync_v1';
+
+// Unique ID for this browser tab/window instance to avoid echoing own writes
+const CLIENT_INSTANCE_ID = `client-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+let lastSyncedTimestamp = '';
+let lastSyncedHash = '';
+
+const broadcastChannel =
+  typeof window !== 'undefined' && 'BroadcastChannel' in window
+    ? new BroadcastChannel(REALTIME_CHANNEL_NAME)
+    : null;
+
+function computeDataHash(data) {
+  if (!data) return '';
+  try {
+    return JSON.stringify({
+      semesters: data.semesters || [],
+      subjects: data.subjects || [],
+      slots: data.slots || [],
+      overrides: data.overrides || [],
+      multiDayEvents: data.multiDayEvents || [],
+      shortNotes: data.shortNotes || [],
+      activeSemesterId: data.activeSemesterId || null,
+    });
+  } catch {
+    return '';
+  }
+}
+
+function isSampleDataset(data) {
+  if (!data || !Array.isArray(data.subjects)) return true;
+  if (data.subjects.length === 0) return true;
+  const sampleIds = new Set(['sub-1', 'sub-2', 'sub-3', 'sub-4', 'sub-5', 'sub-6']);
+  return data.subjects.every((s) => sampleIds.has(s.id));
+}
+
+/**
+ * Ensures valid arrays and automatically assigns termScope ('1', '2', or 'both')
+ * to legacy subjects that don't have termScope defined yet based on their timetable slots.
+ */
+export function normalizeAndMigrateData(raw) {
+  if (!raw || typeof raw !== 'object') {
+    return getSampleState();
+  }
+
+  const semesters = Array.isArray(raw.semesters) ? raw.semesters : [];
+  const slots = Array.isArray(raw.slots) ? raw.slots : [];
+  const semesterMap = new Map(semesters.map((s) => [s.id, s]));
+
+  const subjects = (Array.isArray(raw.subjects) ? raw.subjects : []).map((sub) => {
+    if (sub.termScope === '1' || sub.termScope === '2' || sub.termScope === 'both') {
+      return sub;
+    }
+    // Auto-infer termScope from slots if not explicitly set yet
+    const subSlots = slots.filter((sl) => sl.subjectId === sub.id);
+    const termsUsed = new Set();
+    subSlots.forEach((sl) => {
+      const sem = semesterMap.get(sl.semesterId);
+      const t = getSemesterTerm(sem || { id: sl.semesterId });
+      if (t) termsUsed.add(t);
+    });
+
+    let inferredScope = 'both';
+    if (termsUsed.size === 1) {
+      inferredScope = Array.from(termsUsed)[0];
+    }
+    return {
+      ...sub,
+      termScope: inferredScope,
+    };
+  });
+
+  return {
+    semesters,
+    subjects,
+    slots,
+    overrides: Array.isArray(raw.overrides) ? raw.overrides : [],
+    multiDayEvents: Array.isArray(raw.multiDayEvents) ? raw.multiDayEvents : [],
+    shortNotes: Array.isArray(raw.shortNotes) ? raw.shortNotes : [],
+    activeSemesterId: raw.activeSemesterId || semesters[0]?.id || null,
+    updatedAt: raw.updatedAt || null,
+  };
+}
 
 export function getSampleState() {
-  return {
+  return normalizeAndMigrateData({
     semesters: INITIAL_SEMESTERS,
     subjects: INITIAL_SUBJECTS,
     slots: INITIAL_TIMETABLE_SLOTS,
@@ -21,7 +105,7 @@ export function getSampleState() {
     multiDayEvents: INITIAL_MULTI_DAY_EVENTS || [],
     shortNotes: INITIAL_SHORT_NOTES || [],
     activeSemesterId: INITIAL_SEMESTERS[0].id,
-  };
+  });
 }
 
 export function getEmptyState() {
@@ -33,6 +117,7 @@ export function getEmptyState() {
     multiDayEvents: [],
     shortNotes: [],
     activeSemesterId: null,
+    updatedAt: new Date().toISOString(),
   };
 }
 
@@ -56,15 +141,7 @@ export function loadData() {
       return init;
     }
     const parsed = JSON.parse(raw);
-    return {
-      semesters: parsed.semesters || [],
-      subjects: parsed.subjects || [],
-      slots: parsed.slots || [],
-      overrides: parsed.overrides || [],
-      multiDayEvents: parsed.multiDayEvents || [],
-      shortNotes: parsed.shortNotes || [],
-      activeSemesterId: parsed.activeSemesterId || (parsed.semesters && parsed.semesters[0]?.id) || null,
-    };
+    return normalizeAndMigrateData(parsed);
   } catch (err) {
     console.error('Error loading data from localStorage:', err);
     return getSampleState();
@@ -73,7 +150,8 @@ export function loadData() {
 
 export function saveData(data) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    const normalized = normalizeAndMigrateData(data);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
   } catch (err) {
     console.error('Error saving data to localStorage:', err);
   }
@@ -85,15 +163,7 @@ function loadUserDataLocal(userId) {
     const raw = localStorage.getItem(`${USER_STORAGE_PREFIX}${userId}`);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    return {
-      semesters: parsed.semesters || [],
-      subjects: parsed.subjects || [],
-      slots: parsed.slots || [],
-      overrides: parsed.overrides || [],
-      multiDayEvents: parsed.multiDayEvents || [],
-      shortNotes: parsed.shortNotes || [],
-      activeSemesterId: parsed.activeSemesterId || (parsed.semesters && parsed.semesters[0]?.id) || null,
-    };
+    return normalizeAndMigrateData(parsed);
   } catch {
     return null;
   }
@@ -102,7 +172,8 @@ function loadUserDataLocal(userId) {
 function saveUserDataLocal(userId, data) {
   if (!userId) return;
   try {
-    localStorage.setItem(`${USER_STORAGE_PREFIX}${userId}`, JSON.stringify(data));
+    const normalized = normalizeAndMigrateData(data);
+    localStorage.setItem(`${USER_STORAGE_PREFIX}${userId}`, JSON.stringify(normalized));
   } catch (err) {
     console.error('Error saving user data locally:', err);
   }
@@ -114,100 +185,228 @@ export function resetData() {
   return init;
 }
 
-// ----------------- Supabase & Hybrid Cloud Sync -----------------
+// ----------------- Cloud Firestore Real-Time Storage Helpers -----------------
+
+function toSafeDocId(userId) {
+  return String(userId || '').replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
+async function fetchFirestoreCalendar(userId, timeoutMs = 3500) {
+  const docId = toSafeDocId(userId);
+  if (!docId) return null;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const res = await fetch(`${CLOUD_FIRESTORE_BASE_URL}/edcalendar_calendars/${docId}`, {
+      method: 'GET',
+      signal: controller.signal,
+      cache: 'no-store',
+    });
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    const json = await res.json();
+    const fields = json?.fields;
+    if (!fields || !fields.calendarJson?.stringValue) return null;
+    const parsed = JSON.parse(fields.calendarJson.stringValue);
+    const updatedAt = fields.updatedAt?.stringValue || parsed.updatedAt || '';
+    const clientId = fields.clientId?.stringValue || '';
+    return {
+      data: normalizeAndMigrateData({ ...parsed, updatedAt }),
+      updatedAt,
+      clientId,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function pushFirestoreCalendar(userId, data, timeoutMs = 4000) {
+  const docId = toSafeDocId(userId);
+  if (!docId || !data) return false;
+  try {
+    const updatedAt = data.updatedAt || new Date().toISOString();
+    const payloadToStore = normalizeAndMigrateData({ ...data, updatedAt });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const body = {
+      fields: {
+        userId: { stringValue: String(userId) },
+        calendarJson: { stringValue: JSON.stringify(payloadToStore) },
+        updatedAt: { stringValue: updatedAt },
+        clientId: { stringValue: CLIENT_INSTANCE_ID },
+      },
+    };
+    const res = await fetch(`${CLOUD_FIRESTORE_BASE_URL}/edcalendar_calendars/${docId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (res.ok) {
+      lastSyncedTimestamp = updatedAt;
+      lastSyncedHash = computeDataHash(payloadToStore);
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function broadcastLocalUpdate(userId, data) {
+  if (!broadcastChannel) return;
+  try {
+    broadcastChannel.postMessage({
+      type: 'CALENDAR_UPDATED',
+      userId,
+      data,
+      updatedAt: data.updatedAt || new Date().toISOString(),
+      clientId: CLIENT_INSTANCE_ID,
+    });
+  } catch {
+    // Ignore broadcast errors
+  }
+}
+
+// ----------------- Cloud Sync & Real-Time Subscription -----------------
 
 export async function loadCloudData(userId) {
   if (!userId) {
     return loadData();
   }
 
-  // For local/hybrid accounts or when Supabase is unreachable, use local user store seamlessly
+  const localUserCache = loadUserDataLocal(userId);
+  const generalLocal = loadData();
+  const bestLocal =
+    localUserCache && !isSampleDataset(localUserCache)
+      ? localUserCache
+      : !isSampleDataset(generalLocal)
+      ? generalLocal
+      : localUserCache || generalLocal;
+
+  // 1. Fetch from Always-On Cloud Firestore
+  const cloudRecord = await fetchFirestoreCalendar(userId, 3500);
+
+  if (cloudRecord && cloudRecord.data) {
+    const cloudData = cloudRecord.data;
+    const localHasRealData = bestLocal && !isSampleDataset(bestLocal);
+
+    if (localHasRealData) {
+      const localCount = (bestLocal.subjects?.length || 0) + (bestLocal.slots?.length || 0);
+      const cloudCount = (cloudData.subjects?.length || 0) + (cloudData.slots?.length || 0);
+      const localTime = bestLocal.updatedAt ? new Date(bestLocal.updatedAt).getTime() : 0;
+      const cloudTime = cloudRecord.updatedAt ? new Date(cloudRecord.updatedAt).getTime() : 0;
+
+      // If local is newer or has more items added before cloud sync was active, merge subject termScopes and push local to cloud
+      if (localTime > cloudTime || localCount > cloudCount) {
+        const merged = normalizeAndMigrateData({
+          ...bestLocal,
+          updatedAt: new Date().toISOString(),
+        });
+        saveData(merged);
+        saveUserDataLocal(userId, merged);
+        lastSyncedTimestamp = merged.updatedAt;
+        lastSyncedHash = computeDataHash(merged);
+        pushFirestoreCalendar(userId, merged);
+        return merged;
+      }
+    }
+
+    saveData(cloudData);
+    saveUserDataLocal(userId, cloudData);
+    lastSyncedTimestamp = cloudRecord.updatedAt || '';
+    lastSyncedHash = computeDataHash(cloudData);
+    return cloudData;
+  }
+
+  // 2. Fallback: Check Supabase if configured & reachable (for non-local UUIDs)
   const isLocalId = String(userId).startsWith('user-');
-  if (!supabase || isLocalId) {
-    const existingUserLocal = loadUserDataLocal(userId);
-    if (existingUserLocal && existingUserLocal.semesters?.length > 0) {
-      saveData(existingUserLocal);
-      return existingUserLocal;
+  if (supabase && !isLocalId) {
+    try {
+      const health = await checkSupabaseHealth(2000);
+      if (health.ok) {
+        const { data, error } = await supabase
+          .from('user_calendars')
+          .select('calendar_data')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+        if (!error && data?.calendar_data) {
+          const normalized = normalizeAndMigrateData(data.calendar_data);
+          saveData(normalized);
+          saveUserDataLocal(userId, normalized);
+          pushFirestoreCalendar(userId, normalized);
+          return normalized;
+        }
+      }
+    } catch {
+      // Ignore Supabase error
     }
-    const fallback = loadData();
-    saveUserDataLocal(userId, fallback);
-    return fallback;
   }
 
-  try {
-    const health = await checkSupabaseHealth(2000);
-    if (!health.ok) {
-      const existingUserLocal = loadUserDataLocal(userId);
-      if (existingUserLocal) return existingUserLocal;
-      return loadData();
-    }
-
-    const { data, error } = await supabase
-      .from('user_calendars')
-      .select('calendar_data')
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    if (error) {
-      console.warn('Supabase query error, fallback to local:', error.message);
-      return loadUserDataLocal(userId) || loadData();
-    }
-
-    if (data && data.calendar_data) {
-      const cloudData = data.calendar_data;
-      saveData(cloudData);
-      saveUserDataLocal(userId, cloudData);
-      return cloudData;
-    }
-
-    // New user with no cloud data yet:
-    if (hasExistingLocalData()) {
-      const existingLocal = loadData();
-      saveUserDataLocal(userId, existingLocal);
-      await saveCloudDataImmediate(userId, existingLocal);
-      return existingLocal;
-    }
-
-    const empty = getEmptyState();
-    saveUserDataLocal(userId, empty);
-    await saveCloudDataImmediate(userId, empty);
-    saveData(empty);
-    return empty;
-  } catch (err) {
-    console.error('Failed to load cloud data:', err);
-    return loadUserDataLocal(userId) || loadData();
-  }
+  // 3. Seed Cloud Firestore with existing local data
+  const initialToSave = normalizeAndMigrateData({
+    ...(bestLocal || getSampleState()),
+    updatedAt: new Date().toISOString(),
+  });
+  saveData(initialToSave);
+  saveUserDataLocal(userId, initialToSave);
+  lastSyncedTimestamp = initialToSave.updatedAt;
+  lastSyncedHash = computeDataHash(initialToSave);
+  await pushFirestoreCalendar(userId, initialToSave);
+  return initialToSave;
 }
 
 export async function saveCloudDataImmediate(userId, data) {
-  saveData(data);
-  saveUserDataLocal(userId, data);
-  if (!supabase || !userId || String(userId).startsWith('user-')) return;
+  const stamped = normalizeAndMigrateData({
+    ...data,
+    updatedAt: new Date().toISOString(),
+  });
+  saveData(stamped);
+  saveUserDataLocal(userId, stamped);
+  lastSyncedTimestamp = stamped.updatedAt;
+  lastSyncedHash = computeDataHash(stamped);
+  broadcastLocalUpdate(userId, stamped);
 
+  if (!userId) return;
+
+  await pushFirestoreCalendar(userId, stamped);
+
+  if (!supabase || String(userId).startsWith('user-')) return;
   try {
     const health = await checkSupabaseHealth(2000);
     if (!health.ok) return;
-
-    const { error } = await supabase
+    await supabase
       .from('user_calendars')
-      .upsert({
-        user_id: userId,
-        calendar_data: data,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'user_id' });
-    if (error) throw error;
-  } catch (err) {
-    console.error('Error saving directly to Supabase:', err);
+      .upsert(
+        {
+          user_id: userId,
+          calendar_data: stamped,
+          updated_at: stamped.updatedAt,
+        },
+        { onConflict: 'user_id' }
+      );
+  } catch {
+    // Ignore Supabase error
   }
 }
 
 let syncTimeout = null;
 export function debouncedSaveCloudData(userId, data, onStatusChange) {
-  // Always update local cache instantly for responsive UI
-  saveData(data);
-  saveUserDataLocal(userId, data);
+  const stamped = normalizeAndMigrateData({
+    ...data,
+    updatedAt: new Date().toISOString(),
+  });
 
-  if (!supabase || !userId || String(userId).startsWith('user-')) {
+  // 1. Instant local update + instant cross-tab broadcast (0ms)
+  saveData(stamped);
+  saveUserDataLocal(userId, stamped);
+  lastSyncedTimestamp = stamped.updatedAt;
+  lastSyncedHash = computeDataHash(stamped);
+  broadcastLocalUpdate(userId, stamped);
+
+  if (!userId) {
     if (onStatusChange) onStatusChange('saved');
     return;
   }
@@ -217,31 +416,155 @@ export function debouncedSaveCloudData(userId, data, onStatusChange) {
 
   syncTimeout = setTimeout(async () => {
     try {
-      const health = await checkSupabaseHealth(2000);
-      if (!health.ok) {
-        if (onStatusChange) onStatusChange('saved');
-        return;
-      }
+      // 2. Push to Always-On Cloud Firestore
+      await pushFirestoreCalendar(userId, stamped);
 
-      const { error } = await supabase
-        .from('user_calendars')
-        .upsert({
-          user_id: userId,
-          calendar_data: data,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'user_id' });
-
-      if (error) {
-        console.error('Sync to Supabase error:', error);
-        if (onStatusChange) onStatusChange('saved');
-      } else {
-        if (onStatusChange) onStatusChange('saved');
+      // 3. Also push to Supabase if applicable
+      if (supabase && !String(userId).startsWith('user-')) {
+        const health = await checkSupabaseHealth(2000);
+        if (health.ok) {
+          await supabase
+            .from('user_calendars')
+            .upsert(
+              {
+                user_id: userId,
+                calendar_data: stamped,
+                updated_at: stamped.updatedAt,
+              },
+              { onConflict: 'user_id' }
+            );
+        }
       }
+      if (onStatusChange) onStatusChange('saved');
     } catch (err) {
       console.error('Sync failed:', err);
       if (onStatusChange) onStatusChange('saved');
     }
-  }, 600);
+  }, 350);
+}
+
+/**
+ * Subscribes to real-time updates across tabs (BroadcastChannel + storage event)
+ * AND across devices via Cloud Firestore live polling + Supabase Realtime.
+ */
+export function subscribeRealtimeCloudData(userId, onRemoteUpdate, onSyncStatus) {
+  if (!userId || typeof window === 'undefined') return () => {};
+
+  let isActive = true;
+  let isCheckingCloud = false;
+
+  const applyIncomingData = (incomingData, incomingUpdatedAt) => {
+    if (!isActive || !incomingData) return;
+    const normalized = normalizeAndMigrateData(incomingData);
+    const incomingHash = computeDataHash(normalized);
+    if (!incomingHash || incomingHash === lastSyncedHash) return;
+
+    lastSyncedHash = incomingHash;
+    if (incomingUpdatedAt) {
+      lastSyncedTimestamp = incomingUpdatedAt;
+    }
+    saveData(normalized);
+    saveUserDataLocal(userId, normalized);
+    onRemoteUpdate(normalized);
+    if (onSyncStatus) onSyncStatus('saved');
+  };
+
+  // 1. Instant Cross-Tab Listener via BroadcastChannel
+  const handleBroadcast = (event) => {
+    const msg = event?.data;
+    if (!msg || msg.type !== 'CALENDAR_UPDATED') return;
+    if (msg.userId !== userId || msg.clientId === CLIENT_INSTANCE_ID) return;
+    applyIncomingData(msg.data, msg.updatedAt);
+  };
+  if (broadcastChannel) {
+    broadcastChannel.addEventListener('message', handleBroadcast);
+  }
+
+  // 2. Cross-Tab Fallback via window 'storage' event
+  const userKey = `${USER_STORAGE_PREFIX}${userId}`;
+  const handleStorage = (e) => {
+    if ((e.key === userKey || e.key === STORAGE_KEY) && e.newValue) {
+      try {
+        const parsed = JSON.parse(e.newValue);
+        applyIncomingData(parsed, parsed.updatedAt);
+      } catch {
+        // Ignore parse error
+      }
+    }
+  };
+  window.addEventListener('storage', handleStorage);
+
+  // 3. Cross-Device Real-Time Cloud Watcher (Cloud Firestore)
+  const checkCloudUpdates = async () => {
+    if (!isActive || isCheckingCloud) return;
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    isCheckingCloud = true;
+    try {
+      const remote = await fetchFirestoreCalendar(userId, 2500);
+      if (remote && remote.data && remote.clientId !== CLIENT_INSTANCE_ID) {
+        const remoteTime = remote.updatedAt ? new Date(remote.updatedAt).getTime() : 0;
+        const localTime = lastSyncedTimestamp ? new Date(lastSyncedTimestamp).getTime() : 0;
+        if (remoteTime > localTime || !lastSyncedTimestamp) {
+          applyIncomingData(remote.data, remote.updatedAt);
+        }
+      }
+    } catch {
+      // Ignore transient network errors
+    } finally {
+      isCheckingCloud = false;
+    }
+  };
+
+  const pollInterval = setInterval(checkCloudUpdates, 2500);
+
+  const handleVisibilityOrFocus = () => {
+    if (document.visibilityState === 'visible') {
+      checkCloudUpdates();
+    }
+  };
+  window.addEventListener('focus', handleVisibilityOrFocus);
+  document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+
+  // 4. Optional Supabase Realtime Channel (when Supabase is online for UUID users)
+  let supabaseChannel = null;
+  if (supabase && !String(userId).startsWith('user-')) {
+    try {
+      supabaseChannel = supabase
+        .channel(`realtime_user_calendar_${userId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'user_calendars',
+            filter: `user_id=eq.${userId}`,
+          },
+          (payload) => {
+            const nextCal = payload?.new?.calendar_data;
+            if (nextCal) {
+              applyIncomingData(nextCal, payload?.new?.updated_at);
+            }
+          }
+        )
+        .subscribe();
+    } catch {
+      // Ignore Supabase channel error
+    }
+  }
+
+  return () => {
+    isActive = false;
+    clearInterval(pollInterval);
+    if (broadcastChannel) {
+      broadcastChannel.removeEventListener('message', handleBroadcast);
+    }
+    window.removeEventListener('storage', handleStorage);
+    window.removeEventListener('focus', handleVisibilityOrFocus);
+    document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+    if (supabaseChannel && supabase) {
+      supabase.removeChannel(supabaseChannel).catch(() => {});
+    }
+  };
 }
 
 // ----------------- Backup & Restore -----------------
@@ -274,7 +597,7 @@ export function importBackupJSON(fileContent) {
     if (!Array.isArray(content.semesters) || !Array.isArray(content.subjects) || !Array.isArray(content.slots)) {
       throw new Error('โครงสร้างไฟล์สำรองข้อมูลไม่ถูกต้อง');
     }
-    const cleanData = {
+    const cleanData = normalizeAndMigrateData({
       semesters: content.semesters,
       subjects: content.subjects,
       slots: content.slots,
@@ -282,7 +605,8 @@ export function importBackupJSON(fileContent) {
       multiDayEvents: content.multiDayEvents || [],
       shortNotes: content.shortNotes || [],
       activeSemesterId: content.activeSemesterId || content.semesters[0]?.id || null,
-    };
+      updatedAt: new Date().toISOString(),
+    });
     saveData(cleanData);
     return { success: true, data: cleanData };
   } catch (err) {

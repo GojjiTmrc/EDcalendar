@@ -19,6 +19,7 @@ import {
   saveData,
   loadCloudData,
   debouncedSaveCloudData,
+  subscribeRealtimeCloudData,
   resetData,
   loadTheme,
   saveTheme,
@@ -87,10 +88,12 @@ export default function App() {
     };
   }, []);
 
-  // Fetch Cloud Data when user logs in
+  // Fetch Cloud Data & Subscribe to Real-Time Sync when user logs in
   useEffect(() => {
     let isMounted = true;
-    async function fetchUserData() {
+    let unsubscribeRealtime = null;
+
+    async function fetchAndSubscribeUserData() {
       if (user) {
         setSyncStatus('saving');
         try {
@@ -103,17 +106,36 @@ export default function App() {
           console.error('Error fetching user data:', err);
           if (isMounted) setSyncStatus('saved');
         }
+
+        if (isMounted) {
+          unsubscribeRealtime = subscribeRealtimeCloudData(
+            user.id,
+            (remoteData) => {
+              if (isMounted) {
+                setData(remoteData);
+              }
+            },
+            (status) => {
+              if (isMounted) {
+                setSyncStatus(status);
+              }
+            }
+          );
+        }
       } else if (isDemoMode) {
         setData(loadData());
       }
     }
 
     if (!authLoading) {
-      fetchUserData();
+      fetchAndSubscribeUserData();
     }
 
     return () => {
       isMounted = false;
+      if (unsubscribeRealtime) {
+        unsubscribeRealtime();
+      }
     };
   }, [user, isDemoMode, authLoading]);
 
@@ -297,12 +319,12 @@ export default function App() {
 
   // ------------------ Backup & Reset Handlers ------------------
   const handleDataImported = (newData) => {
-    setData(newData);
+    updateData(newData);
   };
 
   const handleResetData = () => {
     const res = resetData();
-    setData(res);
+    updateData(res);
   };
 
   // ------------------ Short Notes Handlers ------------------

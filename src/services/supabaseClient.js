@@ -139,6 +139,71 @@ function initSupabase() {
 
 export const supabase = initSupabase();
 
+// ----------------- Always-On Cloud Realtime Sync Engine (Google Cloud Firestore) -----------------
+export const CLOUD_FIRESTORE_BASE_URL =
+  'https://firestore.googleapis.com/v1/projects/gojji-lyrics-hub/databases/(default)/documents';
+
+function emailToAccountDocId(email) {
+  return String(email || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '_');
+}
+
+async function fetchCloudAccount(email, timeoutMs = 2500) {
+  const docId = emailToAccountDocId(email);
+  if (!docId) return null;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const res = await fetch(`${CLOUD_FIRESTORE_BASE_URL}/edcalendar_accounts/${docId}`, {
+      method: 'GET',
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    const json = await res.json();
+    const f = json?.fields;
+    if (!f || !f.email?.stringValue) return null;
+    return {
+      id: f.id?.stringValue || `user-${docId}`,
+      email: f.email.stringValue,
+      password: f.password?.stringValue || '',
+      name: f.name?.stringValue || f.email.stringValue.split('@')[0],
+      updatedAt: f.updatedAt?.stringValue || new Date().toISOString(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function saveCloudAccount(account, timeoutMs = 3000) {
+  if (!account || !account.email) return;
+  const docId = emailToAccountDocId(account.email);
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const body = {
+      fields: {
+        id: { stringValue: String(account.id || `user-${docId}`) },
+        email: { stringValue: String(account.email).trim() },
+        password: { stringValue: String(account.password || '') },
+        name: { stringValue: String(account.name || account.email.split('@')[0]) },
+        updatedAt: { stringValue: new Date().toISOString() },
+      },
+    };
+    await fetch(`${CLOUD_FIRESTORE_BASE_URL}/edcalendar_accounts/${docId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+  } catch {
+    // Fallback to local if offline
+  }
+}
+
 // ----------------- Built-in & Local Account Auth System -----------------
 const LOCAL_ACCOUNTS_KEY = 'edcalendar_local_accounts_v1';
 const LOCAL_SESSION_KEY = 'edcalendar_local_session_v1';
@@ -147,6 +212,13 @@ const DEFAULT_ACCOUNTS = [
   {
     id: 'user-godgittipong127',
     email: 'godgittipong127@gmail.com',
+    password: 'Godtmrc000',
+    name: 'ครูกิตติพงษ์ (Gojji)',
+    createdAt: '2026-10-19T00:00:00.000Z',
+  },
+  {
+    id: 'user-godgittipong127',
+    email: 'godgiitpong127@gmail.com',
     password: 'Godtmrc000',
     name: 'ครูกิตติพงษ์ (Gojji)',
     createdAt: '2026-10-19T00:00:00.000Z',
@@ -196,10 +268,22 @@ function saveLocalAccounts(accounts) {
   }
 }
 
+function upsertLocalAccount(acc) {
+  if (!acc || !acc.email) return;
+  const accounts = getLocalAccounts();
+  const cleanEmail = acc.email.toLowerCase();
+  const idx = accounts.findIndex((a) => a.email.toLowerCase() === cleanEmail);
+  if (idx >= 0) {
+    accounts[idx] = { ...accounts[idx], ...acc };
+  } else {
+    accounts.push(acc);
+  }
+  saveLocalAccounts(accounts);
+}
+
 export function getLocalSession() {
   if (typeof window === 'undefined') return null;
   try {
-    // Ensure default accounts are seeded in localStorage
     getLocalAccounts();
     const raw = localStorage.getItem(LOCAL_SESSION_KEY);
     if (!raw) return null;
@@ -246,6 +330,17 @@ export async function getActiveSession() {
 export function subscribeAuthChanges(callback) {
   localAuthListeners.add(callback);
 
+  // Listen to cross-tab login/logout changes via storage event
+  const handleStorageEvent = (e) => {
+    if (e.key === LOCAL_SESSION_KEY) {
+      const nextUser = getLocalSession();
+      callback(nextUser || null);
+    }
+  };
+  if (typeof window !== 'undefined') {
+    window.addEventListener('storage', handleStorageEvent);
+  }
+
   let subscription = null;
   if (supabase) {
     const res = supabase.auth.onAuthStateChange((_event, session) => {
@@ -261,6 +356,9 @@ export function subscribeAuthChanges(callback) {
 
   return () => {
     localAuthListeners.delete(callback);
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('storage', handleStorageEvent);
+    }
     subscription?.unsubscribe();
   };
 }
@@ -269,7 +367,6 @@ export function subscribeAuthChanges(callback) {
 export async function signInWithGoogle() {
   if (!supabase) throw new Error('ยังไม่ได้กำหนดค่า Supabase URL และ Key');
 
-  // 1. Proactively test if Supabase server is alive (prevents browser redirecting to Chrome NXDOMAIN error page)
   const health = await checkSupabaseHealth(3500);
   if (!health.ok) {
     throw new Error('SUPABASE_UNREACHABLE');
@@ -299,7 +396,6 @@ export async function signInWithGoogle() {
           }
           throw new Error(errJson.msg || 'เกิดข้อผิดพลาดในการตรวจสอบ Google OAuth');
         }
-        // If ok, redirect
         window.location.href = data.url;
       } catch (probeErr) {
         if (probeErr.message === 'MISSING_OAUTH_SECRET') {
@@ -311,7 +407,6 @@ export async function signInWithGoogle() {
         if (probeErr.message && !probeErr.message.includes('fetch') && !probeErr.message.includes('NetworkError')) {
           throw probeErr;
         }
-        // Since health check already succeeded, CORS failure on GET means it was successfully redirected to accounts.google.com!
         window.location.href = data.url;
       }
     }
@@ -332,7 +427,23 @@ export async function signInWithEmail(email, password) {
   const cleanEmail = (email || '').trim().toLowerCase();
   const cleanPassword = (password || '').trim();
 
-  // 1. Check built-in / local accounts first for instant reliable login
+  // 1. Check Cloud Account Registry first (enables cross-device login & password changes)
+  const cloudAcc = await fetchCloudAccount(cleanEmail, 2500);
+  if (cloudAcc) {
+    upsertLocalAccount(cloudAcc);
+    if (cloudAcc.password === password || cloudAcc.password === cleanPassword) {
+      const sessionUser = {
+        id: cloudAcc.id || `user-${cleanEmail.replace(/[^a-z0-9]/g, '')}`,
+        email: cloudAcc.email,
+        user_metadata: { name: cloudAcc.name || cloudAcc.email.split('@')[0] },
+        isCloudAccount: true,
+      };
+      setLocalSession(sessionUser);
+      return { user: sessionUser, session: { user: sessionUser } };
+    }
+  }
+
+  // 2. Check built-in / local accounts cache
   const accounts = getLocalAccounts();
   const matched = accounts.find((acc) => acc.email.toLowerCase() === cleanEmail);
 
@@ -342,8 +453,10 @@ export async function signInWithEmail(email, password) {
         id: matched.id || `user-${cleanEmail.replace(/[^a-z0-9]/g, '')}`,
         email: matched.email,
         user_metadata: { name: matched.name || matched.email.split('@')[0] },
-        isLocalAccount: true,
+        isCloudAccount: true,
       };
+      // Ensure account is also synced to cloud registry
+      saveCloudAccount(matched);
       setLocalSession(sessionUser);
       return { user: sessionUser, session: { user: sessionUser } };
     } else {
@@ -351,7 +464,7 @@ export async function signInWithEmail(email, password) {
     }
   }
 
-  // 2. If not in local accounts, check if Supabase is online
+  // 3. Check Supabase if online
   if (supabase) {
     const health = await checkSupabaseHealth(2500);
     if (health.ok) {
@@ -373,33 +486,36 @@ export async function signUpWithEmail(email, password) {
     throw new Error('กรุณากรอกอีเมลและรหัสผ่านให้ครบถ้วน');
   }
 
-  // Save/update in local accounts registry and sign in immediately
+  // Alias godgiitpong127@gmail.com and godgittipong127@gmail.com to the same user ID
+  const isGojjiAlias =
+    cleanEmail === 'godgittipong127@gmail.com' || cleanEmail === 'godgiitpong127@gmail.com';
+
   const accounts = getLocalAccounts();
   const existingIdx = accounts.findIndex((acc) => acc.email.toLowerCase() === cleanEmail);
   const newAccount = {
-    id: existingIdx >= 0 ? accounts[existingIdx].id : `user-${cleanEmail.replace(/[^a-z0-9]/g, '')}`,
+    id: isGojjiAlias
+      ? 'user-godgittipong127'
+      : existingIdx >= 0
+      ? accounts[existingIdx].id
+      : `user-${cleanEmail.replace(/[^a-z0-9]/g, '')}`,
     email: email.trim(),
     password,
     name: existingIdx >= 0 ? accounts[existingIdx].name : email.trim().split('@')[0],
     createdAt: existingIdx >= 0 ? accounts[existingIdx].createdAt : new Date().toISOString(),
   };
 
-  if (existingIdx >= 0) {
-    accounts[existingIdx] = newAccount;
-  } else {
-    accounts.push(newAccount);
-  }
-  saveLocalAccounts(accounts);
+  upsertLocalAccount(newAccount);
+  await saveCloudAccount(newAccount);
 
   const sessionUser = {
     id: newAccount.id,
     email: newAccount.email,
     user_metadata: { name: newAccount.name },
-    isLocalAccount: true,
+    isCloudAccount: true,
   };
   setLocalSession(sessionUser);
 
-  // Also attempt cloud registration in background if Supabase is reachable
+  // Also attempt Supabase registration in background if reachable
   if (supabase) {
     checkSupabaseHealth(2000)
       .then((health) => {
@@ -415,12 +531,18 @@ export async function signUpWithEmail(email, password) {
 
 export async function resetPasswordForEmail(email, newPassword = '') {
   const cleanEmail = (email || '').trim().toLowerCase();
+  const cloudAcc = await fetchCloudAccount(cleanEmail, 2500);
+  if (cloudAcc) {
+    upsertLocalAccount(cloudAcc);
+  }
+
   const accounts = getLocalAccounts();
   const idx = accounts.findIndex((acc) => acc.email.toLowerCase() === cleanEmail);
 
   if (idx >= 0 && newPassword) {
     accounts[idx].password = newPassword;
     saveLocalAccounts(accounts);
+    await saveCloudAccount(accounts[idx]);
     return { updated: true };
   }
 
