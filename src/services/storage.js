@@ -276,35 +276,25 @@ export async function loadCloudData(userId) {
     return loadData();
   }
 
+  // Strictly read ONLY this specific user's isolated local cache (never shared demo storage)
   const localUserCache = loadUserDataLocal(userId);
-  const generalLocal = loadData();
-  const bestLocal =
-    localUserCache && !isSampleDataset(localUserCache)
-      ? localUserCache
-      : !isSampleDataset(generalLocal)
-      ? generalLocal
-      : localUserCache || generalLocal;
 
-  // 1. Fetch from Always-On Cloud Firestore
+  // 1. Fetch from Always-On Cloud Firestore for this specific userId
   const cloudRecord = await fetchFirestoreCalendar(userId, 3500);
 
   if (cloudRecord && cloudRecord.data) {
     const cloudData = cloudRecord.data;
-    const localHasRealData = bestLocal && !isSampleDataset(bestLocal);
+    const localHasRealData = localUserCache && !isSampleDataset(localUserCache);
 
     if (localHasRealData) {
-      const localCount = (bestLocal.subjects?.length || 0) + (bestLocal.slots?.length || 0);
-      const cloudCount = (cloudData.subjects?.length || 0) + (cloudData.slots?.length || 0);
-      const localTime = bestLocal.updatedAt ? new Date(bestLocal.updatedAt).getTime() : 0;
+      const localTime = localUserCache.updatedAt ? new Date(localUserCache.updatedAt).getTime() : 0;
       const cloudTime = cloudRecord.updatedAt ? new Date(cloudRecord.updatedAt).getTime() : 0;
 
-      // If local is newer or has more items added before cloud sync was active, merge subject termScopes and push local to cloud
-      if (localTime > cloudTime || localCount > cloudCount) {
+      if (localTime > cloudTime) {
         const merged = normalizeAndMigrateData({
-          ...bestLocal,
+          ...localUserCache,
           updatedAt: new Date().toISOString(),
         });
-        saveData(merged);
         saveUserDataLocal(userId, merged);
         lastSyncedTimestamp = merged.updatedAt;
         lastSyncedHash = computeDataHash(merged);
@@ -313,7 +303,6 @@ export async function loadCloudData(userId) {
       }
     }
 
-    saveData(cloudData);
     saveUserDataLocal(userId, cloudData);
     lastSyncedTimestamp = cloudRecord.updatedAt || '';
     lastSyncedHash = computeDataHash(cloudData);
@@ -334,7 +323,6 @@ export async function loadCloudData(userId) {
 
         if (!error && data?.calendar_data) {
           const normalized = normalizeAndMigrateData(data.calendar_data);
-          saveData(normalized);
           saveUserDataLocal(userId, normalized);
           pushFirestoreCalendar(userId, normalized);
           return normalized;
@@ -345,12 +333,11 @@ export async function loadCloudData(userId) {
     }
   }
 
-  // 3. Seed Cloud Firestore with existing local data
+  // 3. Brand-new user with no cloud data yet: use their own localUserCache if present, otherwise start with a clean empty calendar
   const initialToSave = normalizeAndMigrateData({
-    ...(bestLocal || getSampleState()),
+    ...(localUserCache || getEmptyState()),
     updatedAt: new Date().toISOString(),
   });
-  saveData(initialToSave);
   saveUserDataLocal(userId, initialToSave);
   lastSyncedTimestamp = initialToSave.updatedAt;
   lastSyncedHash = computeDataHash(initialToSave);
@@ -363,13 +350,14 @@ export async function saveCloudDataImmediate(userId, data) {
     ...data,
     updatedAt: new Date().toISOString(),
   });
-  saveData(stamped);
+  if (!userId) {
+    saveData(stamped);
+    return;
+  }
   saveUserDataLocal(userId, stamped);
   lastSyncedTimestamp = stamped.updatedAt;
   lastSyncedHash = computeDataHash(stamped);
   broadcastLocalUpdate(userId, stamped);
-
-  if (!userId) return;
 
   await pushFirestoreCalendar(userId, stamped);
 
@@ -399,24 +387,24 @@ export function debouncedSaveCloudData(userId, data, onStatusChange) {
     updatedAt: new Date().toISOString(),
   });
 
-  // 1. Instant local update + instant cross-tab broadcast (0ms)
-  saveData(stamped);
+  if (!userId) {
+    saveData(stamped);
+    if (onStatusChange) onStatusChange('saved');
+    return;
+  }
+
+  // 1. Instant isolated per-user local update + instant cross-tab broadcast (0ms)
   saveUserDataLocal(userId, stamped);
   lastSyncedTimestamp = stamped.updatedAt;
   lastSyncedHash = computeDataHash(stamped);
   broadcastLocalUpdate(userId, stamped);
-
-  if (!userId) {
-    if (onStatusChange) onStatusChange('saved');
-    return;
-  }
 
   if (onStatusChange) onStatusChange('saving');
   clearTimeout(syncTimeout);
 
   syncTimeout = setTimeout(async () => {
     try {
-      // 2. Push to Always-On Cloud Firestore
+      // 2. Push to Always-On Cloud Firestore under this user's own document ID
       await pushFirestoreCalendar(userId, stamped);
 
       // 3. Also push to Supabase if applicable
@@ -463,13 +451,12 @@ export function subscribeRealtimeCloudData(userId, onRemoteUpdate, onSyncStatus)
     if (incomingUpdatedAt) {
       lastSyncedTimestamp = incomingUpdatedAt;
     }
-    saveData(normalized);
     saveUserDataLocal(userId, normalized);
     onRemoteUpdate(normalized);
     if (onSyncStatus) onSyncStatus('saved');
   };
 
-  // 1. Instant Cross-Tab Listener via BroadcastChannel
+  // 1. Instant Cross-Tab Listener via BroadcastChannel (filtered strictly by userId)
   const handleBroadcast = (event) => {
     const msg = event?.data;
     if (!msg || msg.type !== 'CALENDAR_UPDATED') return;
@@ -480,10 +467,10 @@ export function subscribeRealtimeCloudData(userId, onRemoteUpdate, onSyncStatus)
     broadcastChannel.addEventListener('message', handleBroadcast);
   }
 
-  // 2. Cross-Tab Fallback via window 'storage' event
+  // 2. Cross-Tab Fallback via window 'storage' event (filtered strictly by this user's key)
   const userKey = `${USER_STORAGE_PREFIX}${userId}`;
   const handleStorage = (e) => {
-    if ((e.key === userKey || e.key === STORAGE_KEY) && e.newValue) {
+    if (e.key === userKey && e.newValue) {
       try {
         const parsed = JSON.parse(e.newValue);
         applyIncomingData(parsed, parsed.updatedAt);
