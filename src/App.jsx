@@ -545,6 +545,7 @@ export default function App() {
         initialPeriodNumber={slotInitialPeriod}
         subjects={data.subjects}
         semesterId={data.activeSemesterId}
+        activeSemester={activeSemester}
         onOpenNewSubject={() => {
           setIsSlotModalOpen(false);
           setIsSubjectModalOpen(true);

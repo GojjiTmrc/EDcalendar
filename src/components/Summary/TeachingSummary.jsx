@@ -13,7 +13,7 @@ import {
   Search,
   ChevronDown
 } from 'lucide-react';
-import { calculateTeachingSummary } from '../../services/summaryService';
+import { calculateTeachingSummary, getTermScopeInfo } from '../../services/summaryService';
 import SummaryPrintView from './SummaryPrintView';
 import { formatThaiDate, parseDateString, THAI_MONTHS_FULL } from '../../utils/dateUtils';
 import { getColorById } from '../../utils/colors';
@@ -276,10 +276,10 @@ export default function TeachingSummary({
         <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <div>
             <h3 className="font-bold text-base text-slate-900 dark:text-white">
-              สรุปผลการสอนแยกตามรายวิชา
+              สรุปผลการสอนแยกตามรายวิชา ({summary.subjectBreakdown.length} วิชาในภาคเรียนนี้)
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              รายละเอียดคาบสอนจริง เปรียบเทียบกับแผนการสอนและอัตราความสำเร็จ
+              แสดงเฉพาะวิชาที่ตั้งค่าเป็นวิชาในภาคเรียนนี้ หรือวิชาที่เรียนทั้ง 2 เทอม
             </p>
           </div>
         </div>
@@ -306,67 +306,79 @@ export default function TeachingSummary({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {summary.subjectBreakdown.map((item) => {
-                const color = getColorById(item.subject.colorId);
+              {summary.subjectBreakdown.length === 0 ? (
+                <tr>
+                  <td colSpan={11} className="py-10 text-center text-slate-400 dark:text-slate-500">
+                    ไม่มีรายวิชาที่กำหนดไว้สำหรับภาคเรียนนี้ (สามารถตั้งค่าเทอมของแต่ละวิชาได้ที่ปุ่ม "วิชา" ด้านบน)
+                  </td>
+                </tr>
+              ) : (
+                summary.subjectBreakdown.map((item) => {
+                  const color = getColorById(item.subject.colorId);
+                  const scopeInfo = getTermScopeInfo(item.subject.termScope);
 
-                return (
-                  <tr key={item.subject.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors">
-                    <td className="py-3.5 px-4">
-                      <div className="flex items-center gap-2.5">
-                        <span className={`w-3 h-3 rounded-full shrink-0 ${color.dot}`}></span>
-                        <div>
-                          <div className="font-bold text-slate-900 dark:text-white">
-                            {item.subject.name}
-                          </div>
-                          <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                            {item.subject.code} {item.subject.defaultRoom ? `• ${item.subject.defaultRoom}` : ''}
+                  return (
+                    <tr key={item.subject.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors">
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center gap-2.5">
+                          <span className={`w-3 h-3 rounded-full shrink-0 ${color.dot}`}></span>
+                          <div>
+                            <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5 flex-wrap">
+                              <span>{item.subject.name}</span>
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold border ${scopeInfo.badgeClass}`}>
+                                {scopeInfo.shortLabel}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                              {item.subject.code} {item.subject.defaultRoom ? `• ${item.subject.defaultRoom}` : ''}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="py-3 px-3 text-center text-slate-700 dark:text-slate-300 font-medium">
-                      {item.subject.gradeGroup || '-'}
-                    </td>
-                    <td className="py-3 px-3 text-center font-bold text-slate-800 dark:text-slate-200 whitespace-nowrap">
-                      {item.plannedWeeksCount}
-                    </td>
-                    <td className="py-3 px-3 text-center font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
-                      {item.taughtWeeksCount}
-                    </td>
-                    <td className="py-3 px-3 text-center font-bold text-slate-800 dark:text-slate-200">
-                      {item.plannedCount}
-                    </td>
-                    <td className="py-3 px-3 text-center font-bold text-emerald-600 dark:text-emerald-400">
-                      {item.completedCount}
-                    </td>
-                    <td className="py-3 px-3 text-center font-medium text-rose-600 dark:text-rose-400">
-                      {item.cancelledCount > 0 ? item.cancelledCount : '-'}
-                    </td>
-                    <td className="py-3 px-3 text-center font-medium text-amber-600 dark:text-amber-400">
-                      {item.activityCount > 0 ? item.activityCount : '-'}
-                    </td>
-                    <td className="py-3 px-3 text-center font-medium text-sky-600 dark:text-sky-400">
-                      {item.makeupCount > 0 ? item.makeupCount : '-'}
-                    </td>
-                    <td className="py-3 px-4 text-center font-semibold text-slate-800 dark:text-slate-200">
-                      {item.taughtDurationShort}
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 bg-slate-100 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
-                          <div
-                            className="bg-indigo-600 h-full rounded-full transition-all duration-500"
-                            style={{ width: `${item.completionRate}%` }}
-                          ></div>
+                      </td>
+                      <td className="py-3 px-3 text-center text-slate-700 dark:text-slate-300 font-medium">
+                        {item.subject.gradeGroup || '-'}
+                      </td>
+                      <td className="py-3 px-3 text-center font-bold text-slate-800 dark:text-slate-200 whitespace-nowrap">
+                        {item.plannedWeeksCount}
+                      </td>
+                      <td className="py-3 px-3 text-center font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                        {item.taughtWeeksCount}
+                      </td>
+                      <td className="py-3 px-3 text-center font-bold text-slate-800 dark:text-slate-200">
+                        {item.plannedCount}
+                      </td>
+                      <td className="py-3 px-3 text-center font-bold text-emerald-600 dark:text-emerald-400">
+                        {item.completedCount}
+                      </td>
+                      <td className="py-3 px-3 text-center font-medium text-rose-600 dark:text-rose-400">
+                        {item.cancelledCount > 0 ? item.cancelledCount : '-'}
+                      </td>
+                      <td className="py-3 px-3 text-center font-medium text-amber-600 dark:text-amber-400">
+                        {item.activityCount > 0 ? item.activityCount : '-'}
+                      </td>
+                      <td className="py-3 px-3 text-center font-medium text-sky-600 dark:text-sky-400">
+                        {item.makeupCount > 0 ? item.makeupCount : '-'}
+                      </td>
+                      <td className="py-3 px-4 text-center font-semibold text-slate-800 dark:text-slate-200">
+                        {item.taughtDurationShort}
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 bg-slate-100 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
+                            <div
+                              className="bg-indigo-600 h-full rounded-full transition-all duration-500"
+                              style={{ width: `${item.completionRate}%` }}
+                            ></div>
+                          </div>
+                          <span className="font-bold text-xs text-indigo-600 dark:text-indigo-400 w-10 text-right">
+                            {item.completionRate}%
+                          </span>
                         </div>
-                        <span className="font-bold text-xs text-indigo-600 dark:text-indigo-400 w-10 text-right">
-                          {item.completionRate}%
-                        </span>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>

@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { X, Trash2, Clock, MapPin, BookOpen, Calendar as CalIcon } from 'lucide-react';
 import { SCHOOL_DAYS } from '../../utils/dateUtils';
 import { getColorById } from '../../utils/colors';
 import { DEFAULT_PERIODS } from '../../utils/periodConfig';
+import { isSubjectInSemester, getTermScopeInfo } from '../../services/summaryService';
 
 // Helper to compute standard end time based on periods (50 mins/period)
 function calculateEndTime(startStr, periodCount) {
@@ -26,6 +27,7 @@ export default function SlotModal({
   configuredPeriods,
   subjects = [],
   semesterId,
+  activeSemester,
   onOpenNewSubject,
 }) {
   const teachingPeriods = (configuredPeriods || DEFAULT_PERIODS).filter(p => !p.isLunch);
@@ -36,6 +38,14 @@ export default function SlotModal({
   const [startTime, setStartTime] = useState('08:40');
   const [endTime, setEndTime] = useState('10:20');
   const [roomOverride, setRoomOverride] = useState('');
+
+  // Subjects available for the active semester (or include the currently edited slot's subject)
+  const availableSubjects = useMemo(() => {
+    const filtered = subjects.filter(
+      (sub) => isSubjectInSemester(sub, activeSemester) || (editingSlot && sub.id === editingSlot.subjectId)
+    );
+    return filtered.length > 0 ? filtered : subjects;
+  }, [subjects, activeSemester, editingSlot]);
 
   // Helper to get time from period bells
   const getTimesForPeriodSpan = (startP, spanCount) => {
@@ -65,7 +75,7 @@ export default function SlotModal({
         setStartPeriodNumber(match.period);
       }
     } else {
-      const defaultSub = subjects[0];
+      const defaultSub = availableSubjects[0];
       const initialPeriods = defaultSub?.periods || 2;
       const targetP = initialPeriodNumber || 1;
       const { start, end } = getTimesForPeriodSpan(targetP, initialPeriods);
@@ -78,11 +88,11 @@ export default function SlotModal({
       setEndTime(end);
       setRoomOverride('');
     }
-  }, [editingSlot, initialDayOfWeek, initialPeriodNumber, isOpen, subjects]);
+  }, [editingSlot, initialDayOfWeek, initialPeriodNumber, isOpen, availableSubjects]);
 
   if (!isOpen) return null;
 
-  const selectedSubject = subjects.find(s => s.id === subjectId) || subjects[0];
+  const selectedSubject = subjects.find(s => s.id === subjectId) || availableSubjects[0];
   const color = selectedSubject ? getColorById(selectedSubject.colorId) : null;
 
   const handleStartPeriodChange = (pNum) => {
@@ -231,21 +241,27 @@ export default function SlotModal({
               className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               required
             >
-              {subjects.map((sub) => (
-                <option key={sub.id} value={sub.id}>
-                  {sub.name} ({sub.code}) - {sub.periods || 2} คาบ {sub.gradeGroup ? `[${sub.gradeGroup}]` : ''}
-                </option>
-              ))}
+              {availableSubjects.map((sub) => {
+                const scopeInfo = getTermScopeInfo(sub.termScope);
+                return (
+                  <option key={sub.id} value={sub.id}>
+                    {sub.name} ({sub.code}) - {sub.periods || 2} คาบ {sub.gradeGroup ? `[${sub.gradeGroup}] ` : ''}({scopeInfo.shortLabel})
+                  </option>
+                );
+              })}
             </select>
 
             {/* Subject Preview Card */}
             {selectedSubject && (
               <div className={`mt-2 p-3 rounded-xl border flex items-center justify-between ${color?.bg} ${color?.border}`}>
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="font-bold text-sm text-slate-800 dark:text-slate-100">{selectedSubject.name}</span>
                     <span className="text-xs px-2 py-0.5 rounded-full bg-white/70 dark:bg-black/30 font-semibold text-slate-700 dark:text-slate-300">
                       {selectedSubject.code}
+                    </span>
+                    <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold border ${getTermScopeInfo(selectedSubject.termScope).badgeClass}`}>
+                      {getTermScopeInfo(selectedSubject.termScope).shortLabel}
                     </span>
                     {selectedSubject.gradeGroup && (
                       <span className="text-xs px-2 py-0.5 rounded-full bg-white/70 dark:bg-black/30 font-medium text-slate-700 dark:text-slate-300">

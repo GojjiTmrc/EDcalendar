@@ -9,6 +9,70 @@ import {
 import { getSessionsForDate } from './calendarGenerator';
 
 /**
+ * Detects whether a semester object represents Term '1' or Term '2'.
+ * Returns '1', '2', or null if indeterminate.
+ */
+export function getSemesterTerm(semester) {
+  if (!semester) return null;
+  if (semester.term === '1' || semester.term === 1) return '1';
+  if (semester.term === '2' || semester.term === 2) return '2';
+
+  const name = String(semester.name || '');
+  const match = name.match(/(?:ภาคเรียนที่|เทอม)\s*([12])|(?:^|\s)([12])\s*\//);
+  if (match) return match[1] || match[2];
+
+  const id = String(semester.id || '');
+  if (id.endsWith('-1')) return '1';
+  if (id.endsWith('-2')) return '2';
+
+  return null;
+}
+
+/**
+ * Checks whether a subject belongs to the given semester based on subject.termScope.
+ * termScope values: '1' (วิชาเทอม 1) | '2' (วิชาเทอม 2) | 'both' (วิชาที่เรียนทั้ง 2 เทอม, default)
+ */
+export function isSubjectInSemester(subject, semester) {
+  if (!subject) return false;
+  const scope = subject.termScope || 'both';
+  if (scope === 'both') return true;
+
+  const semTerm = getSemesterTerm(semester);
+  if (!semTerm) return true;
+
+  return String(scope) === String(semTerm);
+}
+
+/**
+ * Returns display label and badge classes for a subject's termScope.
+ */
+export function getTermScopeInfo(termScope) {
+  const scope = termScope || 'both';
+  if (scope === '1') {
+    return {
+      value: '1',
+      label: 'วิชาเทอม 1',
+      shortLabel: 'เทอม 1',
+      badgeClass: 'bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/60 dark:text-sky-300 dark:border-sky-800',
+    };
+  }
+  if (scope === '2') {
+    return {
+      value: '2',
+      label: 'วิชาเทอม 2',
+      shortLabel: 'เทอม 2',
+      badgeClass: 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-800',
+    };
+  }
+  return {
+    value: 'both',
+    label: 'วิชาที่เรียนทั้ง 2 เทอม',
+    shortLabel: 'ทั้ง 2 เทอม',
+    badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800',
+  };
+}
+
+/**
  * Calculates teaching summary metrics and breakdown for a specified time scope.
  * 
  * @param {Object} semester 
@@ -55,9 +119,10 @@ export function calculateTeachingSummary(
 
   const subjectMap = new Map((subjects || []).map(s => [s.id, s]));
 
-  // Initialize subject breakdown map
+  // Initialize subject breakdown map ONLY for subjects that match this semester's term
   const subjectStats = {};
   for (const sub of subjects) {
+    if (!isSubjectInSemester(sub, semester)) continue;
     subjectStats[sub.id] = {
       subject: sub,
       plannedCount: 0,
@@ -108,16 +173,22 @@ export function calculateTeachingSummary(
 
       for (const sess of daySessions) {
         const subId = sess.subjectId;
+        const knownSub = subjectMap.get(subId);
+        // Skip sessions belonging to a subject explicitly restricted to another term
+        if (knownSub && !isSubjectInSemester(knownSub, semester)) {
+          continue;
+        }
         const duration = Math.max(0, timeToMinutes(sess.endTime) - timeToMinutes(sess.startTime));
 
         // Create breakdown entry if not exists
         if (!subjectStats[subId]) {
-          const sub = subjectMap.get(subId) || {
+          const sub = knownSub || {
             id: subId,
             code: sess.subjectCode || '???',
             name: sess.subjectName || 'วิชาทั่วไป',
             colorId: 'indigo',
             gradeGroup: sess.gradeGroup || '',
+            termScope: 'both',
           };
           subjectStats[subId] = {
             subject: sub,
