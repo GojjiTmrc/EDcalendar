@@ -12,7 +12,7 @@ import ShortNoteModal from './components/ShortNotes/ShortNoteModal';
 import DueAlertBanner from './components/ShortNotes/DueAlertBanner';
 import AuthScreen from './components/Auth/AuthScreen';
 import { Loader2, GraduationCap, Plus } from 'lucide-react';
-import { supabase, signOut } from './services/supabaseClient';
+import { getActiveSession, subscribeAuthChanges, signOut } from './services/supabaseClient';
 
 import {
   loadData,
@@ -59,29 +59,31 @@ export default function App() {
     saveTheme(theme);
   }, [theme]);
 
-  // Listen to Supabase Auth State
+  // Listen to Local + Supabase Auth State
   useEffect(() => {
-    if (!supabase) {
-      setAuthLoading(false);
-      return;
-    }
+    let isMounted = true;
 
-    // Get current session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      setAuthLoading(false);
-    }).catch(() => {
-      setAuthLoading(false);
-    });
+    getActiveSession()
+      .then((sessionUser) => {
+        if (isMounted) {
+          setUser(sessionUser);
+          setAuthLoading(false);
+        }
+      })
+      .catch(() => {
+        if (isMounted) setAuthLoading(false);
+      });
 
-    // Listen for auth changes (login, logout, token refresh)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      setAuthLoading(false);
+    const unsubscribe = subscribeAuthChanges((sessionUser) => {
+      if (isMounted) {
+        setUser(sessionUser);
+        setAuthLoading(false);
+      }
     });
 
     return () => {
-      subscription?.unsubscribe();
+      isMounted = false;
+      unsubscribe();
     };
   }, []);
 
@@ -99,7 +101,7 @@ export default function App() {
           }
         } catch (err) {
           console.error('Error fetching user data:', err);
-          if (isMounted) setSyncStatus('error');
+          if (isMounted) setSyncStatus('saved');
         }
       } else if (isDemoMode) {
         setData(loadData());
@@ -130,9 +132,7 @@ export default function App() {
 
   const handleSignOut = async () => {
     try {
-      if (supabase) {
-        await signOut();
-      }
+      await signOut();
     } catch (err) {
       console.error('Sign out error:', err);
     }

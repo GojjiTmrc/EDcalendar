@@ -139,6 +139,132 @@ function initSupabase() {
 
 export const supabase = initSupabase();
 
+// ----------------- Built-in & Local Account Auth System -----------------
+const LOCAL_ACCOUNTS_KEY = 'edcalendar_local_accounts_v1';
+const LOCAL_SESSION_KEY = 'edcalendar_local_session_v1';
+
+const DEFAULT_ACCOUNTS = [
+  {
+    id: 'user-godgittipong127',
+    email: 'godgittipong127@gmail.com',
+    password: 'Godtmrc000',
+    name: 'ครูกิตติพงษ์ (Gojji)',
+    createdAt: '2026-10-19T00:00:00.000Z',
+  },
+];
+
+const localAuthListeners = new Set();
+
+function notifyAuthListeners(user) {
+  localAuthListeners.forEach((cb) => {
+    try {
+      cb(user);
+    } catch (err) {
+      console.error('Auth listener error:', err);
+    }
+  });
+}
+
+export function getLocalAccounts() {
+  if (typeof window === 'undefined') return [...DEFAULT_ACCOUNTS];
+  try {
+    const raw = localStorage.getItem(LOCAL_ACCOUNTS_KEY);
+    const stored = raw ? JSON.parse(raw) : [];
+    const map = new Map();
+    DEFAULT_ACCOUNTS.forEach((acc) => map.set(acc.email.toLowerCase(), acc));
+    if (Array.isArray(stored)) {
+      stored.forEach((acc) => {
+        if (acc && acc.email) {
+          map.set(acc.email.toLowerCase(), acc);
+        }
+      });
+    }
+    const merged = Array.from(map.values());
+    localStorage.setItem(LOCAL_ACCOUNTS_KEY, JSON.stringify(merged));
+    return merged;
+  } catch {
+    return [...DEFAULT_ACCOUNTS];
+  }
+}
+
+function saveLocalAccounts(accounts) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(LOCAL_ACCOUNTS_KEY, JSON.stringify(accounts));
+  } catch (err) {
+    console.error('Failed to save local accounts:', err);
+  }
+}
+
+export function getLocalSession() {
+  if (typeof window === 'undefined') return null;
+  try {
+    // Ensure default accounts are seeded in localStorage
+    getLocalAccounts();
+    const raw = localStorage.getItem(LOCAL_SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed?.user || null;
+  } catch {
+    return null;
+  }
+}
+
+function setLocalSession(user) {
+  if (typeof window === 'undefined') return;
+  try {
+    if (user) {
+      localStorage.setItem(
+        LOCAL_SESSION_KEY,
+        JSON.stringify({ user, loggedInAt: new Date().toISOString() })
+      );
+    } else {
+      localStorage.removeItem(LOCAL_SESSION_KEY);
+    }
+  } catch (err) {
+    console.error('Failed to persist session:', err);
+  }
+  notifyAuthListeners(user);
+}
+
+export async function getActiveSession() {
+  const localUser = getLocalSession();
+  if (localUser) return localUser;
+
+  if (!supabase) return null;
+
+  try {
+    const health = await checkSupabaseHealth(2000);
+    if (!health.ok) return null;
+    const { data } = await supabase.auth.getSession();
+    return data?.session?.user ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function subscribeAuthChanges(callback) {
+  localAuthListeners.add(callback);
+
+  let subscription = null;
+  if (supabase) {
+    const res = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        callback(session.user);
+      } else {
+        const localUser = getLocalSession();
+        callback(localUser || null);
+      }
+    });
+    subscription = res?.data?.subscription;
+  }
+
+  return () => {
+    localAuthListeners.delete(callback);
+    subscription?.unsubscribe();
+  };
+}
+
 // Auth helper functions
 export async function signInWithGoogle() {
   if (!supabase) throw new Error('ยังไม่ได้กำหนดค่า Supabase URL และ Key');
@@ -203,36 +329,128 @@ export async function signInWithGoogle() {
 }
 
 export async function signInWithEmail(email, password) {
-  if (!supabase) throw new Error('ยังไม่ได้กำหนดค่า Supabase URL และ Key');
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  });
-  if (error) throw error;
-  return data;
+  const cleanEmail = (email || '').trim().toLowerCase();
+  const cleanPassword = (password || '').trim();
+
+  // 1. Check built-in / local accounts first for instant reliable login
+  const accounts = getLocalAccounts();
+  const matched = accounts.find((acc) => acc.email.toLowerCase() === cleanEmail);
+
+  if (matched) {
+    if (matched.password === password || matched.password === cleanPassword) {
+      const sessionUser = {
+        id: matched.id || `user-${cleanEmail.replace(/[^a-z0-9]/g, '')}`,
+        email: matched.email,
+        user_metadata: { name: matched.name || matched.email.split('@')[0] },
+        isLocalAccount: true,
+      };
+      setLocalSession(sessionUser);
+      return { user: sessionUser, session: { user: sessionUser } };
+    } else {
+      throw new Error('Invalid login credentials');
+    }
+  }
+
+  // 2. If not in local accounts, check if Supabase is online
+  if (supabase) {
+    const health = await checkSupabaseHealth(2500);
+    if (health.ok) {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password,
+      });
+      if (error) throw error;
+      return data;
+    }
+  }
+
+  throw new Error('Invalid login credentials');
 }
 
 export async function signUpWithEmail(email, password) {
-  if (!supabase) throw new Error('ยังไม่ได้กำหนดค่า Supabase URL และ Key');
-  const { data, error } = await supabase.auth.signUp({
-    email,
+  const cleanEmail = (email || '').trim().toLowerCase();
+  if (!cleanEmail || !password) {
+    throw new Error('กรุณากรอกอีเมลและรหัสผ่านให้ครบถ้วน');
+  }
+
+  // Save/update in local accounts registry and sign in immediately
+  const accounts = getLocalAccounts();
+  const existingIdx = accounts.findIndex((acc) => acc.email.toLowerCase() === cleanEmail);
+  const newAccount = {
+    id: existingIdx >= 0 ? accounts[existingIdx].id : `user-${cleanEmail.replace(/[^a-z0-9]/g, '')}`,
+    email: email.trim(),
     password,
-  });
-  if (error) throw error;
-  return data;
+    name: existingIdx >= 0 ? accounts[existingIdx].name : email.trim().split('@')[0],
+    createdAt: existingIdx >= 0 ? accounts[existingIdx].createdAt : new Date().toISOString(),
+  };
+
+  if (existingIdx >= 0) {
+    accounts[existingIdx] = newAccount;
+  } else {
+    accounts.push(newAccount);
+  }
+  saveLocalAccounts(accounts);
+
+  const sessionUser = {
+    id: newAccount.id,
+    email: newAccount.email,
+    user_metadata: { name: newAccount.name },
+    isLocalAccount: true,
+  };
+  setLocalSession(sessionUser);
+
+  // Also attempt cloud registration in background if Supabase is reachable
+  if (supabase) {
+    checkSupabaseHealth(2000)
+      .then((health) => {
+        if (health.ok) {
+          supabase.auth.signUp({ email: cleanEmail, password }).catch(() => {});
+        }
+      })
+      .catch(() => {});
+  }
+
+  return { user: sessionUser, session: { user: sessionUser } };
 }
 
-export async function resetPasswordForEmail(email) {
-  if (!supabase) throw new Error('ยังไม่ได้กำหนดค่า Supabase URL และ Key');
-  const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: window.location.origin,
-  });
-  if (error) throw error;
-  return data;
+export async function resetPasswordForEmail(email, newPassword = '') {
+  const cleanEmail = (email || '').trim().toLowerCase();
+  const accounts = getLocalAccounts();
+  const idx = accounts.findIndex((acc) => acc.email.toLowerCase() === cleanEmail);
+
+  if (idx >= 0 && newPassword) {
+    accounts[idx].password = newPassword;
+    saveLocalAccounts(accounts);
+    return { updated: true };
+  }
+
+  if (supabase) {
+    const health = await checkSupabaseHealth(2500);
+    if (health.ok) {
+      const { data, error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+        redirectTo: window.location.origin,
+      });
+      if (error) throw error;
+      return data;
+    }
+  }
+
+  if (idx >= 0) {
+    return { localAccountFound: true };
+  }
+
+  throw new Error('ไม่พบบัญชีอีเมลนี้ในระบบ');
 }
 
 export async function signOut() {
+  setLocalSession(null);
   if (!supabase) return;
-  const { error } = await supabase.auth.signOut();
-  if (error) throw error;
+  try {
+    const health = await checkSupabaseHealth(1500);
+    if (health.ok) {
+      await supabase.auth.signOut();
+    }
+  } catch {
+    // Ignore cloud signOut error when offline
+  }
 }

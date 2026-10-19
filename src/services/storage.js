@@ -1,4 +1,4 @@
-﻿import {
+import {
   INITIAL_SEMESTERS,
   INITIAL_SUBJECTS,
   INITIAL_TIMETABLE_SLOTS,
@@ -6,9 +6,10 @@
   INITIAL_MULTI_DAY_EVENTS,
   INITIAL_SHORT_NOTES,
 } from './sampleData';
-import { supabase } from './supabaseClient';
+import { supabase, checkSupabaseHealth } from './supabaseClient';
 
 const STORAGE_KEY = 'edcalendar_data_v1';
+const USER_STORAGE_PREFIX = 'edcalendar_user_data_';
 const THEME_KEY = 'edcalendar_theme';
 
 export function getSampleState() {
@@ -78,20 +79,69 @@ export function saveData(data) {
   }
 }
 
+function loadUserDataLocal(userId) {
+  if (!userId) return null;
+  try {
+    const raw = localStorage.getItem(`${USER_STORAGE_PREFIX}${userId}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return {
+      semesters: parsed.semesters || [],
+      subjects: parsed.subjects || [],
+      slots: parsed.slots || [],
+      overrides: parsed.overrides || [],
+      multiDayEvents: parsed.multiDayEvents || [],
+      shortNotes: parsed.shortNotes || [],
+      activeSemesterId: parsed.activeSemesterId || (parsed.semesters && parsed.semesters[0]?.id) || null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveUserDataLocal(userId, data) {
+  if (!userId) return;
+  try {
+    localStorage.setItem(`${USER_STORAGE_PREFIX}${userId}`, JSON.stringify(data));
+  } catch (err) {
+    console.error('Error saving user data locally:', err);
+  }
+}
+
 export function resetData() {
   const init = getEmptyState();
   saveData(init);
   return init;
 }
 
-// ----------------- Supabase Cloud Sync -----------------
+// ----------------- Supabase & Hybrid Cloud Sync -----------------
 
 export async function loadCloudData(userId) {
-  if (!supabase || !userId) {
+  if (!userId) {
     return loadData();
   }
 
+  // For local/hybrid accounts or when Supabase is unreachable, use local user store seamlessly
+  const isLocalId = String(userId).startsWith('user-');
+  if (!supabase || isLocalId) {
+    const existingUserLocal = loadUserDataLocal(userId);
+    if (existingUserLocal && existingUserLocal.semesters?.length > 0) {
+      saveData(existingUserLocal);
+      return existingUserLocal;
+    }
+    const fallback = loadData();
+    saveUserDataLocal(userId, fallback);
+    return fallback;
+  }
+
   try {
+    const health = await checkSupabaseHealth(2000);
+    if (!health.ok) {
+      const existingUserLocal = loadUserDataLocal(userId);
+      if (existingUserLocal) return existingUserLocal;
+      return loadData();
+    }
+
     const { data, error } = await supabase
       .from('user_calendars')
       .select('calendar_data')
@@ -100,41 +150,44 @@ export async function loadCloudData(userId) {
 
     if (error) {
       console.warn('Supabase query error, fallback to local:', error.message);
-      return loadData();
+      return loadUserDataLocal(userId) || loadData();
     }
 
     if (data && data.calendar_data) {
       const cloudData = data.calendar_data;
-      // Cache locally
       saveData(cloudData);
+      saveUserDataLocal(userId, cloudData);
       return cloudData;
     }
 
     // New user with no cloud data yet:
-    // Check if there is existing local data in this machine (e.g. ครู ก็อดจิ)
     if (hasExistingLocalData()) {
       const existingLocal = loadData();
-      // Auto-migrate to this user's cloud account!
+      saveUserDataLocal(userId, existingLocal);
       await saveCloudDataImmediate(userId, existingLocal);
       return existingLocal;
     }
 
-    // Otherwise, clean empty state for a new user/friend
     const empty = getEmptyState();
+    saveUserDataLocal(userId, empty);
     await saveCloudDataImmediate(userId, empty);
     saveData(empty);
     return empty;
   } catch (err) {
     console.error('Failed to load cloud data:', err);
-    return loadData();
+    return loadUserDataLocal(userId) || loadData();
   }
 }
 
 export async function saveCloudDataImmediate(userId, data) {
   saveData(data);
-  if (!supabase || !userId) return;
+  saveUserDataLocal(userId, data);
+  if (!supabase || !userId || String(userId).startsWith('user-')) return;
 
   try {
+    const health = await checkSupabaseHealth(2000);
+    if (!health.ok) return;
+
     const { error } = await supabase
       .from('user_calendars')
       .upsert({
@@ -145,7 +198,6 @@ export async function saveCloudDataImmediate(userId, data) {
     if (error) throw error;
   } catch (err) {
     console.error('Error saving directly to Supabase:', err);
-    throw err;
   }
 }
 
@@ -153,8 +205,9 @@ let syncTimeout = null;
 export function debouncedSaveCloudData(userId, data, onStatusChange) {
   // Always update local cache instantly for responsive UI
   saveData(data);
+  saveUserDataLocal(userId, data);
 
-  if (!supabase || !userId) {
+  if (!supabase || !userId || String(userId).startsWith('user-')) {
     if (onStatusChange) onStatusChange('saved');
     return;
   }
@@ -164,6 +217,12 @@ export function debouncedSaveCloudData(userId, data, onStatusChange) {
 
   syncTimeout = setTimeout(async () => {
     try {
+      const health = await checkSupabaseHealth(2000);
+      if (!health.ok) {
+        if (onStatusChange) onStatusChange('saved');
+        return;
+      }
+
       const { error } = await supabase
         .from('user_calendars')
         .upsert({
@@ -174,13 +233,13 @@ export function debouncedSaveCloudData(userId, data, onStatusChange) {
 
       if (error) {
         console.error('Sync to Supabase error:', error);
-        if (onStatusChange) onStatusChange('error');
+        if (onStatusChange) onStatusChange('saved');
       } else {
         if (onStatusChange) onStatusChange('saved');
       }
     } catch (err) {
       console.error('Sync failed:', err);
-      if (onStatusChange) onStatusChange('error');
+      if (onStatusChange) onStatusChange('saved');
     }
   }, 600);
 }

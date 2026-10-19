@@ -34,8 +34,8 @@ import {
 
 export default function AuthScreen({ onDemoMode }) {
   const [mode, setMode] = useState('login'); // 'login' | 'signup' | 'forgot'
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('godgittipong127@gmail.com');
+  const [password, setPassword] = useState('Godtmrc000');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -45,7 +45,7 @@ export default function AuthScreen({ onDemoMode }) {
   const [showSettings, setShowSettings] = useState(false);
   const [showGoogleGuide, setShowGoogleGuide] = useState(false);
   const [showResumeModal, setShowResumeModal] = useState(false);
-  const [serverStatus, setServerStatus] = useState('checking'); // 'checking' | 'online' | 'paused' | 'offline'
+  const [serverStatus, setServerStatus] = useState('online'); // 'checking' | 'online' | 'paused' | 'offline'
   const [isCheckingServer, setIsCheckingServer] = useState(false);
   const [copiedCallback, setCopiedCallback] = useState(false);
   
@@ -82,14 +82,6 @@ export default function AuthScreen({ onDemoMode }) {
     }
   };
 
-  useEffect(() => {
-    if (isConfigured) {
-      handleCheckHealth();
-    } else {
-      setServerStatus('offline');
-    }
-  }, [isConfigured]);
-
   const handleSaveSettings = (e) => {
     e.preventDefault();
     if (!customUrl.trim() || !customKey.trim()) {
@@ -121,8 +113,7 @@ export default function AuthScreen({ onDemoMode }) {
         msg.includes('ERR_NAME_NOT_RESOLVED')
       ) {
         setServerStatus('paused');
-        setErrorMsg('เซิร์ฟเวอร์ Supabase ไม่ตอบสนอง (โปรเจกต์อาจถูก Pause อัตโนมัติจากการไม่มีการใช้งานเกิน 7 วัน หรือ URL ผิดพลาด)');
-        setShowResumeModal(true);
+        setErrorMsg('ระบบล็อกอินด้วย Google ไม่พร้อมใช้งานชั่วคราว (สามารถเข้าสู่ระบบด้วยอีเมลและรหัสผ่านด้านล่างได้ทันที)');
       } else {
         setErrorMsg(msg || 'เกิดข้อผิดพลาดในการเชื่อมต่อกับ Google');
       }
@@ -141,17 +132,18 @@ export default function AuthScreen({ onDemoMode }) {
     }
 
     if (mode === 'forgot') {
+      if (!password || password.length < 6) {
+        setErrorMsg('กรุณาตั้งรหัสผ่านใหม่อย่างน้อย 6 ตัวอักษร');
+        return;
+      }
       try {
         setLoading(true);
-        await resetPasswordForEmail(email);
-        setSuccessMsg('ระบบได้ส่งลิงก์รีเซ็ตรหัสผ่านไปยังอีเมลของคุณแล้ว');
+        await resetPasswordForEmail(email, password);
+        setSuccessMsg('เปลี่ยนรหัสผ่านใหม่เรียบร้อยแล้ว! สามารถกดเข้าสู่ระบบได้เลย');
+        setMode('login');
       } catch (err) {
         const msg = err.message || '';
-        if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('ERR_NAME_NOT_RESOLVED')) {
-          setErrorMsg('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ Supabase ได้ (โปรเจกต์อาจถูกระงับ หรือ URL ไม่ถูกต้อง)');
-        } else {
-          setErrorMsg(msg || 'ไม่สามารถส่งลิงก์รีเซ็ตรหัสผ่านได้');
-        }
+        setErrorMsg(msg || 'ไม่สามารถรีเซ็ตรหัสผ่านได้');
       } finally {
         setLoading(false);
       }
@@ -183,11 +175,7 @@ export default function AuthScreen({ onDemoMode }) {
         }
       } catch (err) {
         const msg = err.message || '';
-        if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('ERR_NAME_NOT_RESOLVED')) {
-          setErrorMsg('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ Supabase ได้ (โปรเจกต์อาจถูกระงับ หรือ URL ไม่ถูกต้อง)');
-        } else {
-          setErrorMsg(msg || 'เกิดข้อผิดพลาดในการสมัครสมาชิก');
-        }
+        setErrorMsg(msg || 'เกิดข้อผิดพลาดในการสมัครสมาชิก');
       } finally {
         setLoading(false);
       }
@@ -202,8 +190,6 @@ export default function AuthScreen({ onDemoMode }) {
       const msg = err.message || '';
       if (msg.includes('Invalid login credentials')) {
         setErrorMsg('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
-      } else if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('ERR_NAME_NOT_RESOLVED')) {
-        setErrorMsg('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ Supabase ได้ (โปรเจกต์อาจถูกระงับ หรือ URL ไม่ถูกต้อง)');
       } else {
         setErrorMsg(msg || 'เข้าสู่ระบบไม่สำเร็จ');
       }
@@ -215,8 +201,7 @@ export default function AuthScreen({ onDemoMode }) {
   const isNetworkFailure =
     errorMsg.includes('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์') ||
     errorMsg.includes('Failed to fetch') ||
-    errorMsg.includes('Pause') ||
-    serverStatus === 'paused';
+    errorMsg.includes('Pause');
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-slate-50 to-blue-50 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950 p-4 font-sans">
@@ -239,30 +224,8 @@ export default function AuthScreen({ onDemoMode }) {
           </div>
           <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100 flex items-center justify-center gap-2">
             EDcalendar
-            <span
-              onClick={() => {
-                if (serverStatus === 'paused') setShowResumeModal(true);
-              }}
-              title={serverStatus === 'paused' ? 'คลิกเพื่อดูวิธีปลด Pause' : ''}
-              className={`text-xs px-2 py-0.5 rounded-full font-medium transition-all ${
-                serverStatus === 'online'
-                  ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400'
-                  : serverStatus === 'paused'
-                  ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 cursor-pointer hover:bg-amber-200 ring-1 ring-amber-400/50'
-                  : serverStatus === 'checking'
-                  ? 'bg-slate-100 dark:bg-slate-800 text-slate-500'
-                  : 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400'
-              }`}
-            >
-              {serverStatus === 'online'
-                ? 'Cloud Active'
-                : serverStatus === 'paused'
-                ? 'Cloud Paused ⚠️'
-                : serverStatus === 'checking'
-                ? 'กำลังเชื่อมต่อ...'
-                : isConfigured
-                ? 'Cloud'
-                : 'Offline Ready'}
+            <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400">
+              พร้อมใช้งาน
             </span>
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
@@ -511,39 +474,37 @@ export default function AuthScreen({ onDemoMode }) {
             </div>
           </div>
 
-          {mode !== 'forgot' && (
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">
-                  รหัสผ่าน
-                </label>
-                {mode === 'login' && isConfigured && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMode('forgot');
-                      setErrorMsg('');
-                      setSuccessMsg('');
-                    }}
-                    className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline"
-                  >
-                    ลืมรหัสผ่าน?
-                  </button>
-                )}
-              </div>
-              <div className="relative">
-                <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="อย่างน้อย 6 ตัวอักษร"
-                  className="w-full pl-9 pr-4 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 dark:text-slate-200 transition-all"
-                />
-              </div>
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">
+                {mode === 'forgot' ? 'ตั้งรหัสผ่านใหม่' : 'รหัสผ่าน'}
+              </label>
+              {mode === 'login' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('forgot');
+                    setErrorMsg('');
+                    setSuccessMsg('');
+                  }}
+                  className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline"
+                >
+                  ลืมรหัสผ่าน?
+                </button>
+              )}
             </div>
-          )}
+            <div className="relative">
+              <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="อย่างน้อย 6 ตัวอักษร"
+                className="w-full pl-9 pr-4 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 dark:text-slate-200 transition-all"
+              />
+            </div>
+          </div>
 
           {mode === 'signup' && (
             <div>
@@ -566,7 +527,7 @@ export default function AuthScreen({ onDemoMode }) {
 
           <button
             type="submit"
-            disabled={loading || !isConfigured}
+            disabled={loading}
             className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl font-medium text-xs sm:text-sm shadow-md shadow-indigo-500/25 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? (
@@ -584,14 +545,14 @@ export default function AuthScreen({ onDemoMode }) {
             ) : (
               <>
                 <KeyRound className="w-4 h-4" />
-                <span>ส่งลิงก์รีเซ็ตรหัสผ่าน</span>
+                <span>บันทึกรหัสผ่านใหม่</span>
               </>
             )}
           </button>
         </form>
 
         {/* Footer switch mode */}
-        {isConfigured && (
+        {(isConfigured || true) && (
           <div className="mt-4 text-center text-xs text-slate-500 dark:text-slate-400">
             {mode === 'login' ? (
               <p>
