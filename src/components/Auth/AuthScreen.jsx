@@ -34,8 +34,8 @@ import {
 
 export default function AuthScreen({ onDemoMode }) {
   const [mode, setMode] = useState('login'); // 'login' | 'signup' | 'forgot'
-  const [email, setEmail] = useState('godgittipong127@gmail.com');
-  const [password, setPassword] = useState('Godtmrc000');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -447,7 +447,7 @@ export default function AuthScreen({ onDemoMode }) {
 
             <div className="relative flex items-center justify-center mb-4">
               <div className="border-t border-slate-200 dark:border-slate-800 w-full"></div>
-              <span className="bg-white dark:bg-slate-900 px-3 text-xs text-slate-400">
+              <span className="bg-white dark:bg-slate-900 px-3 text-xs text-slate-400 whitespace-nowrap shrink-0">
                 หรือใช้อีเมล
               </span>
               <div className="border-t border-slate-200 dark:border-slate-800 w-full"></div>
@@ -456,7 +456,7 @@ export default function AuthScreen({ onDemoMode }) {
         )}
 
         {/* Email Form */}
-        <form onSubmit={handleSubmit} className="space-y-3.5">
+        <form onSubmit={handleSubmit} autoComplete="off" className="space-y-3.5">
           <div>
             <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
               อีเมล
@@ -466,6 +466,7 @@ export default function AuthScreen({ onDemoMode }) {
               <input
                 type="email"
                 required
+                autoComplete="off"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="teacher@school.ac.th"
@@ -498,6 +499,7 @@ export default function AuthScreen({ onDemoMode }) {
               <input
                 type="password"
                 required
+                autoComplete="new-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="อย่างน้อย 6 ตัวอักษร"
