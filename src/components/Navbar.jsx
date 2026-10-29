@@ -161,15 +161,6 @@ export default function Navbar({
               <span>รายวิชา</span>
             </button>
 
-            <button
-              onClick={onOpenBackup}
-              title="สำรองและกู้คืนข้อมูล (Export / Import)"
-              className="hidden md:flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors border border-slate-200 dark:border-slate-700"
-            >
-              <Download className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-              <span className="hidden lg:inline">สำรองข้อมูล</span>
-            </button>
-
             {/* Notification Bell with Dropdown */}
             <div className="relative">
               <button
@@ -334,14 +325,6 @@ export default function Navbar({
         >
           <BookOpen className="w-5 h-5" />
           <span className="text-[10px] mt-0.5">รายวิชา</span>
-        </button>
-
-        <button
-          onClick={onOpenBackup}
-          className="flex flex-col items-center justify-center py-1 px-3 rounded-xl text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all"
-        >
-          <Download className="w-5 h-5" />
-          <span className="text-[10px] mt-0.5">สำรอง</span>
         </button>
       </nav>
     </>

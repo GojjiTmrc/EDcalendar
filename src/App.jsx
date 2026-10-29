@@ -549,12 +549,6 @@ export default function App() {
             >
               {activeSemester?.name}
             </button>
-            <button
-              onClick={() => setIsBackupModalOpen(true)}
-              className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
-            >
-              สำรองข้อมูล
-            </button>
           </div>
         </div>
       </footer>
