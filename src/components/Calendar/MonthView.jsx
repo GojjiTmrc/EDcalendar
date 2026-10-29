@@ -156,11 +156,11 @@ export default function MonthView({
                   }
 
                   return (
-                    <button
+                    <div
                       key={sess.id}
-                      onClick={() => onSelectSession(sess)}
-                      title={`${sess.startTime}-${sess.endTime} ${sess.subjectCode} ${sess.subjectName} ${sess.reason ? `(${sess.reason})` : ''}`}
-                      className={`w-full text-left px-1.5 py-0.5 rounded text-[11px] font-medium border truncate transition-all flex items-center gap-1 hover:opacity-90 hover:scale-[1.01] ${chipStyle}`}
+                      onClick={() => onSelectSession(sess, 'plan')}
+                      title={`${sess.startTime}-${sess.endTime} ${sess.subjectCode} ${sess.subjectName} ${sess.reason ? `(${sess.reason})` : ''}${sess.postTeachingLog ? `\nบันทึกหลังสอน: ${sess.postTeachingLog}` : ''}`}
+                      className={`w-full text-left px-1.5 py-0.5 rounded text-[11px] font-medium border truncate transition-all flex items-center gap-1 cursor-pointer hover:opacity-95 hover:scale-[1.01] group/chip ${chipStyle}`}
                     >
                       {isCancelled && <Ban className="w-2.5 h-2.5 text-rose-600 shrink-0" />}
                       {isActivity && <AlertCircle className="w-2.5 h-2.5 text-amber-600 shrink-0" />}
@@ -190,7 +190,23 @@ export default function MonthView({
                             : `📦 ${sess.prepChecklist.filter(i => i.isDone).length}/${sess.prepChecklist.length}`}
                         </span>
                       )}
-                    </button>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectSession(sess, 'postLog');
+                        }}
+                        title={sess.postTeachingLog ? 'ดู/แก้ไขบันทึกหลังการสอน' : 'เขียนบันทึกหลังการสอนสำหรับคาบนี้'}
+                        className={`text-[9px] px-1 py-0.2 rounded font-bold shrink-0 transition-all ${
+                          sess.postTeachingLog
+                            ? 'bg-emerald-600 text-white shadow-2xs'
+                            : 'opacity-0 group-hover/chip:opacity-100 bg-white/90 dark:bg-slate-800 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700'
+                        }`}
+                      >
+                        {sess.postTeachingLog ? '✍️ บันทึกแล้ว' : '✍️ บันทึก'}
+                      </button>
+                    </div>
                   );
                 })}
 

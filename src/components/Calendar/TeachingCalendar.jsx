@@ -9,13 +9,16 @@ import {
   Ban,
   AlertCircle,
   Clock,
-  FileText
+  FileText,
+  BookCheck,
+  ArrowDown
 } from 'lucide-react';
 import MonthView from './MonthView';
 import WeekView from './WeekView';
 import DayView from './DayView';
 import SessionDetailModal from './SessionDetailModal';
 import MultiDayEventModal from './MultiDayEventModal';
+import CalendarBottomWorkspace from './CalendarBottomWorkspace';
 import {
   THAI_MONTHS_FULL,
   toDateString,
@@ -66,6 +69,7 @@ export default function TeachingCalendar({
   // Session modal state
   const [selectedSession, setSelectedSession] = useState(null);
   const [selectedDateForModal, setSelectedDateForModal] = useState(null);
+  const [modalInitialTab, setModalInitialTab] = useState('plan'); // 'plan' | 'postLog'
   const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
 
   // Multi-day event modal state
@@ -146,9 +150,10 @@ export default function TeachingCalendar({
   };
 
   // Open modal on session click
-  const handleSelectSession = (sess) => {
+  const handleSelectSession = (sess, initialTab = 'plan') => {
     setSelectedSession(sess);
     setSelectedDateForModal(sess.date);
+    setModalInitialTab(initialTab);
     setIsSessionModalOpen(true);
   };
 
@@ -156,7 +161,23 @@ export default function TeachingCalendar({
   const handleSelectDate = (dateStr) => {
     setSelectedSession(null);
     setSelectedDateForModal(dateStr);
+    setModalInitialTab('plan');
     setIsSessionModalOpen(true);
+  };
+
+  // Jump calendar to a specific date
+  const handleJumpToDate = (dateStr) => {
+    if (!dateStr) return;
+    setCurrentDate(parseDateString(dateStr));
+    setCalendarView('day');
+  };
+
+  // Scroll down to bottom workspace
+  const handleScrollToBottomWorkspace = () => {
+    const el = document.getElementById('calendar-bottom-workspace');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   };
 
   // Open multi-day event modal
@@ -258,6 +279,17 @@ export default function TeachingCalendar({
             </button>
           </div>
 
+          {/* Quick Scroll to Post-Teaching Logs Workspace */}
+          <button
+            onClick={handleScrollToBottomWorkspace}
+            className="flex items-center gap-1.5 px-3 py-2 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-800 rounded-xl text-xs font-semibold transition-all hover:scale-[1.02]"
+            title="เลื่อนลงไปดูบันทึกหลังการสอนโดยรวมด้านล่างปฏิทิน"
+          >
+            <BookCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+            <span>ดูบันทึกหลังการสอน</span>
+            <ArrowDown className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+          </button>
+
           {/* Add Multi-Day Event Button */}
           <button
             onClick={handleOpenAddMultiDay}
@@ -312,6 +344,10 @@ export default function TeachingCalendar({
           <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
           <span>📝 นัดส่งงาน</span>
         </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-emerald-600 dark:text-emerald-400 font-bold">✍️ บันทึกแล้ว</span>
+          <span>= มีบันทึกหลังการสอน</span>
+        </div>
         <div className="flex items-center gap-1.5 ml-auto text-amber-700 dark:text-amber-300 font-medium">
           <Flag className="w-3 h-3" />
           <span>กิจกรรมหลายวัน: {multiDayEvents.length} รายการ</span>
@@ -361,12 +397,27 @@ export default function TeachingCalendar({
         />
       )}
 
+      {/* Bottom Workspace Window (Scroll down below Teaching Calendar) */}
+      <CalendarBottomWorkspace
+        semester={semester}
+        slots={slots}
+        subjects={subjects}
+        overrides={overrides}
+        multiDayEvents={multiDayEvents}
+        currentDate={currentDate}
+        currentDateStr={currentDateStr}
+        daySessions={daySessions}
+        onSelectSession={handleSelectSession}
+        onJumpToDate={handleJumpToDate}
+      />
+
       {/* Session Detail & Edit Modal */}
       <SessionDetailModal
         isOpen={isSessionModalOpen}
         onClose={() => setIsSessionModalOpen(false)}
         session={selectedSession}
         dateStr={selectedDateForModal || currentDateStr}
+        initialTab={modalInitialTab}
         subjects={subjects}
         semesterId={semester?.id}
         shortNotes={shortNotes}

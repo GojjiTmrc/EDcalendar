@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, Clock, MapPin, AlertCircle, Ban, BookOpen, Flag } from 'lucide-react';
+import { Plus, Clock, MapPin, AlertCircle, Ban, BookOpen, Flag, BookCheck } from 'lucide-react';
 import { getSchoolWeekDates, formatThaiDate, toDateString } from '../../utils/dateUtils';
 import { SESSION_STATUS, getColorById } from '../../utils/colors';
 
@@ -204,6 +204,31 @@ export default function WeekView({
                             </span>
                           </div>
                         )}
+
+                        {/* Post-Teaching Log Preview & Quick Menu Button */}
+                        {sess.postTeachingLog && (
+                          <div className="mt-1.5 p-1.5 rounded-lg bg-emerald-100/80 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/70 text-[10px] text-emerald-900 dark:text-emerald-200 line-clamp-2">
+                            <span className="font-bold">✍️ บันทึกหลังสอน:</span> {sess.postTeachingLog}
+                          </div>
+                        )}
+
+                        <div className="mt-2 pt-1.5 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center justify-end">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onSelectSession(sess, 'postLog');
+                            }}
+                            className={`w-full py-1 px-2 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-all ${
+                              sess.postTeachingLog
+                                ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs'
+                                : 'bg-white/90 dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-700'
+                            }`}
+                          >
+                            <BookCheck className="w-3 h-3 shrink-0" />
+                            <span>{sess.postTeachingLog ? '✓ ดู/แก้ไขบันทึกหลังสอน' : 'บันทึกหลังการสอน'}</span>
+                          </button>
+                        </div>
                       </div>
                     );
                   })

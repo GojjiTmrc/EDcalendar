@@ -13,16 +13,27 @@ import {
   Check,
   Target,
   Package,
-  ListChecks
+  ListChecks,
+  BookCheck,
+  Sparkles
 } from 'lucide-react';
 import { formatThaiDate } from '../../utils/dateUtils';
 import { SESSION_STATUS, getColorById } from '../../utils/colors';
+
+const QUICK_POST_LOG_PHRASES = [
+  'นักเรียนเข้าใจเนื้อหาและให้ความร่วมมือในกิจกรรมดีมาก',
+  'จัดการเรียนรู้ได้ครบถ้วนตามจุดประสงค์ที่วางไว้',
+  'เนื้อหาค่อนข้างมาก สอนไม่ทันตามแผน ต้องทบทวนต่อในคาบถัดไป',
+  'นักเรียนบางส่วนยังทำแบบฝึกหัดไม่เสร็จ มอบหมายให้ทำต่อเป็นการบ้าน',
+  'ควรเพิ่มตัวอย่างโจทย์และสื่อประกอบเพื่อให้เห็นภาพชัดเจนขึ้น',
+];
 
 export default function SessionDetailModal({
   isOpen,
   onClose,
   session,
   dateStr,
+  initialTab = 'plan',
   subjects = [],
   semesterId,
   shortNotes = [],
@@ -33,6 +44,7 @@ export default function SessionDetailModal({
   onOpenEditShortNote,
   onToggleCompleteShortNote,
 }) {
+  const [activeModalTab, setActiveModalTab] = useState('plan'); // 'plan' | 'postLog'
   const [status, setStatus] = useState('normal');
   const [reason, setReason] = useState('');
   const [topic, setTopic] = useState('');
@@ -40,6 +52,7 @@ export default function SessionDetailModal({
   const [prepChecklist, setPrepChecklist] = useState([]);
   const [newPrepText, setNewPrepText] = useState('');
   const [notes, setNotes] = useState('');
+  const [postTeachingLog, setPostTeachingLog] = useState('');
 
   // For custom one-off makeup session
   const [isCustom, setIsCustom] = useState(false);
@@ -49,6 +62,7 @@ export default function SessionDetailModal({
   const [customRoom, setCustomRoom] = useState('');
 
   useEffect(() => {
+    setActiveModalTab(initialTab === 'postLog' ? 'postLog' : 'plan');
     if (session) {
       setStatus(session.status || 'normal');
       setReason(session.reason || '');
@@ -57,6 +71,7 @@ export default function SessionDetailModal({
       setPrepChecklist(Array.isArray(session.prepChecklist) ? session.prepChecklist : []);
       setNewPrepText('');
       setNotes(session.notes || '');
+      setPostTeachingLog(session.postTeachingLog || '');
       setIsCustom(Boolean(session.isCustomSession));
       setCustomSubjectId(session.subjectId || subjects[0]?.id || '');
       setStartTime(session.startTime || '08:30');
@@ -71,13 +86,22 @@ export default function SessionDetailModal({
       setPrepChecklist([]);
       setNewPrepText('');
       setNotes('');
+      setPostTeachingLog('');
       setIsCustom(true);
       setCustomSubjectId(subjects[0]?.id || '');
       setStartTime('08:30');
       setEndTime('10:00');
       setCustomRoom('');
     }
-  }, [session, dateStr, isOpen, subjects]);
+  }, [session, dateStr, isOpen, subjects, initialTab]);
+
+  const handleAppendQuickPhrase = (phrase) => {
+    setPostTeachingLog((prev) => {
+      const trimmed = prev.trim();
+      if (!trimmed) return `- ${phrase}`;
+      return `${trimmed}\n- ${phrase}`;
+    });
+  };
 
   const handleAddPrepItem = () => {
     if (!newPrepText.trim()) return;
@@ -106,6 +130,10 @@ export default function SessionDetailModal({
 
   const handleSave = (e) => {
     e.preventDefault();
+    const trimmedPostLog = postTeachingLog.trim();
+    const postLogTimestamp = trimmedPostLog
+      ? (trimmedPostLog !== (session?.postTeachingLog || '') ? new Date().toISOString() : (session?.postTeachingLogUpdatedAt || new Date().toISOString()))
+      : null;
 
     if (isCustom) {
       if (!customSubjectId) {
@@ -127,6 +155,8 @@ export default function SessionDetailModal({
         lessonPlan: lessonPlan.trim(),
         prepChecklist: prepChecklist,
         notes: notes.trim(),
+        postTeachingLog: trimmedPostLog,
+        postTeachingLogUpdatedAt: postLogTimestamp,
       };
       onSaveOverride(customPayload);
       onClose();
@@ -146,6 +176,8 @@ export default function SessionDetailModal({
       lessonPlan: lessonPlan.trim(),
       prepChecklist: prepChecklist,
       notes: notes.trim(),
+      postTeachingLog: trimmedPostLog,
+      postTeachingLogUpdatedAt: postLogTimestamp,
     };
 
     onSaveOverride(payload);
@@ -283,322 +315,442 @@ export default function SessionDetailModal({
             </div>
           )}
 
-          {/* STATUS SELECTOR TABS */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
-              สถานะของคาบในวันนี้
-            </label>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              
-              {/* Normal */}
-              <button
-                type="button"
-                onClick={() => setStatus('normal')}
-                className={`py-2 px-2.5 rounded-xl border text-xs font-medium flex flex-col items-center gap-1 transition-all ${
-                  status === 'normal'
-                    ? 'bg-emerald-500 text-white border-emerald-500 shadow-sm'
-                    : 'bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
-                }`}
-              >
-                <CheckCircle2 className="w-4 h-4" />
-                <span>สอนปกติ</span>
-              </button>
+          {/* MENU SWITCHER: แผนการสอน vs บันทึกหลังการสอน */}
+          <div className="flex items-center bg-slate-100 dark:bg-slate-800/90 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+            <button
+              type="button"
+              onClick={() => setActiveModalTab('plan')}
+              className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                activeModalTab === 'plan'
+                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <Target className="w-3.5 h-3.5" />
+              <span>แผนการสอน & สถานะคาบ</span>
+            </button>
 
-              {/* Cancelled */}
-              <button
-                type="button"
-                onClick={() => setStatus('cancelled')}
-                className={`py-2 px-2.5 rounded-xl border text-xs font-medium flex flex-col items-center gap-1 transition-all ${
-                  status === 'cancelled'
-                    ? 'bg-rose-500 text-white border-rose-500 shadow-sm'
-                    : 'bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
-                }`}
-              >
-                <X className="w-4 h-4" />
-                <span>งดสอน</span>
-              </button>
-
-              {/* Activity */}
-              <button
-                type="button"
-                onClick={() => setStatus('activity')}
-                className={`py-2 px-2.5 rounded-xl border text-xs font-medium flex flex-col items-center gap-1 transition-all ${
-                  status === 'activity'
-                    ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
-                    : 'bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
-                }`}
-              >
-                <AlertCircle className="w-4 h-4" />
-                <span>ติดกิจกรรม</span>
-              </button>
-
-              {/* Makeup */}
-              <button
-                type="button"
-                onClick={() => setStatus('makeup')}
-                className={`py-2 px-2.5 rounded-xl border text-xs font-medium flex flex-col items-center gap-1 transition-all ${
-                  status === 'makeup'
-                    ? 'bg-sky-500 text-white border-sky-500 shadow-sm'
-                    : 'bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
-                }`}
-              >
-                <Clock className="w-4 h-4" />
-                <span>สอนชดเชย</span>
-              </button>
-
-            </div>
+            <button
+              type="button"
+              onClick={() => setActiveModalTab('postLog')}
+              className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                activeModalTab === 'postLog'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400'
+              }`}
+            >
+              <BookCheck className="w-3.5 h-3.5" />
+              <span>เมนูบันทึกหลังการสอน</span>
+              {postTeachingLog.trim() && (
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-extrabold ${
+                  activeModalTab === 'postLog'
+                    ? 'bg-white/25 text-white'
+                    : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                }`}>
+                  ✓ บันทึกแล้ว
+                </span>
+              )}
+            </button>
           </div>
 
-          {/* Reason input (If cancelled or activity) */}
-          {(status === 'cancelled' || status === 'activity' || status === 'makeup') && (
-            <div className="p-3.5 bg-amber-50/70 dark:bg-amber-950/30 rounded-xl border border-amber-200 dark:border-amber-800">
-              <label className="block text-xs font-semibold text-amber-900 dark:text-amber-200 mb-1">
-                {status === 'cancelled'
-                  ? 'สาเหตุที่งดสอน / ไม่ได้เข้าสอน:'
-                  : status === 'activity'
-                  ? 'ชื่อกิจกรรม / วันหยุด:'
-                  : 'รายละเอียดการสอนชดเชย:'}
-              </label>
-              <input
-                type="text"
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                placeholder={
-                  status === 'cancelled'
-                    ? 'เช่น ติดราชการอบรม, ลาป่วย, สัมมนาวิชาการ'
-                    : status === 'activity'
-                    ? 'เช่น งานสัปดาห์วิทยาศาสตร์, แข่งกีฬาสี, วันหยุดนักขัตฤกษ์'
-                    : 'เช่น ชดเชยคาบของวันจันทร์ที่ 21 ก.ย.'
-                }
-                className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700 rounded-lg text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
-                required={status === 'cancelled' || status === 'activity'}
-              />
-            </div>
-          )}
-
-          {/* Lesson Plan & Next Class Preparation */}
-          <div className="p-4 bg-sky-50/60 dark:bg-sky-950/30 rounded-2xl border border-sky-200/80 dark:border-sky-800/60 space-y-3.5">
-            <div className="flex items-center justify-between border-b border-sky-200/60 dark:border-sky-800/60 pb-2">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-lg bg-sky-500 text-white flex items-center justify-center shadow-xs">
-                  <Target className="w-3.5 h-3.5" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-slate-900 dark:text-white">
-                    แผนการสอนและสิ่งที่ต้องเตรียมล่วงหน้า
-                  </h4>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                    วางแผนสำหรับคาบนี้ พร้อมเช็กลิสต์สื่อ/อุปกรณ์ และระบบจะแจ้งเตือนเมื่อใกล้ถึงวันสอน
-                  </p>
+          {activeModalTab === 'postLog' ? (
+            /* ================== POST-TEACHING LOG MENU ================== */
+            <div className="p-4 bg-emerald-50/70 dark:bg-emerald-950/25 rounded-2xl border border-emerald-200/90 dark:border-emerald-800/70 space-y-4 animate-in fade-in duration-150">
+              <div className="flex items-start justify-between gap-2 border-b border-emerald-200/70 dark:border-emerald-800/60 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                    <BookCheck className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                      บันทึกหลังการสอนประจำคาบเรียน
+                    </h4>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                      บันทึกผลการจัดการเรียนรู้ ปัญหา/อุปสรรค หรือข้อเสนอแนะสำหรับคาบนี้ (แสดงผลในหน้าต่างดูบันทึกหลังการสอนด้านล่างปฏิทิน)
+                    </p>
+                  </div>
                 </div>
               </div>
 
-              {prepChecklist.length > 0 && (
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                  prepChecklist.every(i => i.isDone)
-                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300'
-                    : 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300'
-                }`}>
-                  {prepChecklist.every(i => i.isDone)
-                    ? '✓ สื่อพร้อมครบแล้ว'
-                    : `เตรียมสื่อแล้ว ${prepChecklist.filter(i => i.isDone).length}/${prepChecklist.length}`}
-                </span>
-              )}
-            </div>
-
-            {/* Topic */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                หัวข้อบทเรียน / กิจกรรมหลักที่จะสอน
-              </label>
-              <input
-                type="text"
-                value={topic}
-                onChange={(e) => setTopic(e.target.value)}
-                placeholder="เช่น การทดลองแรงเสียดทาน, เขียนโค้ดวนซ้ำ for loop"
-                className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
-              />
-            </div>
-
-            {/* Lesson Plan / Activities */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                รายละเอียดกิจกรรมการเรียนรู้ / แผนการสอน (Lesson Plan)
-              </label>
-              <textarea
-                rows={2}
-                value={lessonPlan}
-                onChange={(e) => setLessonPlan(e.target.value)}
-                placeholder="เช่น แบ่งกลุ่ม 5 กลุ่ม ทำการทดลองวัดค่า... อภิปรายสรุป 15 นาทีท้ายคาบ"
-                className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
-              />
-            </div>
-
-            {/* Prep Checklist */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5 flex items-center justify-between">
-                <span className="flex items-center gap-1.5">
-                  <Package className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
-                  <span>เช็กลิสต์สื่อและอุปกรณ์ที่ต้องเตรียม</span>
-                </span>
-                <span className="text-[10px] text-slate-400 font-normal">
-                  (พิมพ์แล้วกด Enter หรือกดปุ่มเพิ่ม)
-                </span>
-              </label>
-
-              {/* Input to add new checklist item */}
-              <div className="flex gap-2 mb-2">
+              {/* Topic taught in this period */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  หัวข้อ / เรื่องที่สอนในคาบนี้
+                </label>
                 <input
                   type="text"
-                  value={newPrepText}
-                  onChange={(e) => setNewPrepText(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleAddPrepItem();
-                    }
-                  }}
-                  placeholder="พิมพ์ชื่อสื่อ/อุปกรณ์ เช่น ปริ้นต์ใบงาน 40 ชุด, เบิกชุดแล็บ..."
-                  className="flex-1 px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
+                  value={topic}
+                  onChange={(e) => setTopic(e.target.value)}
+                  placeholder="ระบุหัวข้อหรือเนื้อหาที่ได้สอนในคาบนี้..."
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-800 rounded-xl text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500"
                 />
-                <button
-                  type="button"
-                  onClick={handleAddPrepItem}
-                  className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1 transition-colors"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>เพิ่ม</span>
-                </button>
               </div>
 
-              {/* Checklist items */}
-              {prepChecklist.length > 0 && (
-                <div className="space-y-1.5 bg-white/80 dark:bg-slate-900/60 p-2.5 rounded-xl border border-sky-100 dark:border-sky-900/60 max-h-44 overflow-y-auto">
-                  {prepChecklist.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex items-center justify-between gap-2 p-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/60 text-xs transition-colors"
+              {/* Quick Phrases Helper */}
+              <div>
+                <div className="text-[11px] font-semibold text-emerald-800 dark:text-emerald-300 mb-1.5 flex items-center gap-1">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>ตัวช่วยเขียนบันทึกด่วน (คลิกเพื่อเพิ่มข้อความ):</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {QUICK_POST_LOG_PHRASES.map((phrase, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => handleAppendQuickPhrase(phrase)}
+                      className="text-[11px] px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-slate-700 dark:text-slate-200 border border-emerald-200 dark:border-emerald-800 transition-colors text-left"
                     >
-                      <label className="flex items-center gap-2 cursor-pointer min-w-0 flex-1">
-                        <input
-                          type="checkbox"
-                          checked={item.isDone}
-                          onChange={() => handleTogglePrepItem(item.id)}
-                          className="w-4 h-4 text-sky-600 rounded border-slate-300 focus:ring-sky-500 cursor-pointer"
-                        />
-                        <span className={`truncate ${
-                          item.isDone ? 'line-through text-slate-400 dark:text-slate-500 font-normal' : 'text-slate-800 dark:text-slate-200 font-medium'
-                        }`}>
-                          {item.text}
-                        </span>
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => handleDeletePrepItem(item.id)}
-                        className="text-slate-400 hover:text-rose-500 p-1 transition-colors"
-                        title="ลบรายการนี้"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+                      + {phrase}
+                    </button>
                   ))}
                 </div>
-              )}
+              </div>
+
+              {/* Main Post-Teaching Log Textarea */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
+                    รายละเอียดบันทึกหลังการสอน
+                  </label>
+                  {postTeachingLog.trim() && (
+                    <button
+                      type="button"
+                      onClick={() => setPostTeachingLog('')}
+                      className="text-[11px] text-rose-600 dark:text-rose-400 hover:underline font-medium"
+                    >
+                      ล้างข้อความ
+                    </button>
+                  )}
+                </div>
+                <textarea
+                  rows={5}
+                  value={postTeachingLog}
+                  onChange={(e) => setPostTeachingLog(e.target.value)}
+                  placeholder="เขียนบันทึกหลังการสอนที่นี่ เช่น ผลการเรียนรู้ของนักเรียน, กิจกรรมที่ทำ, ปัญหาที่พบ หรือสิ่งที่ต้องติดตามในคาบถัดไป..."
+                  className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 leading-relaxed"
+                />
+              </div>
             </div>
-
-            {/* Additional Notes / Homework */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                บันทึกช่วยจำเพิ่มเติม / สิ่งที่ต้องติดตาม
-              </label>
-              <textarea
-                rows={2}
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="เช่น เตือนเรื่องระเบียบห้องแล็บ, นัดหัวหน้าห้องรวบรวมงาน"
-                className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
-              />
-            </div>
-          </div>
-
-          {/* Assignments Due in this Session / Date */}
-          {(() => {
-            const sessionNotes = shortNotes.filter((n) => {
-              if (n.dueDate !== activeDate) return false;
-              if (!selectedSubject) return true;
-              return !n.subjectId || n.subjectId === selectedSubject.id;
-            });
-
-            return (
-              <div className="p-3.5 bg-amber-50/70 dark:bg-amber-950/30 rounded-xl border border-amber-200/80 dark:border-amber-800/60 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <FileText className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                      งานที่นัดส่งในวันนี้ ({sessionNotes.length} รายการ)
-                    </span>
-                  </div>
+          ) : (
+            <>
+              {/* STATUS SELECTOR TABS */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                  สถานะของคาบในวันนี้
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  
+                  {/* Normal */}
                   <button
                     type="button"
-                    onClick={() => {
-                      onClose();
-                      onOpenAddShortNote && onOpenAddShortNote(activeDate, selectedSubject?.id);
-                    }}
-                    className="text-[11px] font-semibold text-amber-700 dark:text-amber-300 hover:underline flex items-center gap-1"
+                    onClick={() => setStatus('normal')}
+                    className={`py-2 px-2.5 rounded-xl border text-xs font-medium flex flex-col items-center gap-1 transition-all ${
+                      status === 'normal'
+                        ? 'bg-emerald-500 text-white border-emerald-500 shadow-sm'
+                        : 'bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                    }`}
                   >
-                    <Plus className="w-3 h-3" />
-                    <span>สั่งงาน / นัดส่งงาน</span>
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>สอนปกติ</span>
                   </button>
+
+                  {/* Cancelled */}
+                  <button
+                    type="button"
+                    onClick={() => setStatus('cancelled')}
+                    className={`py-2 px-2.5 rounded-xl border text-xs font-medium flex flex-col items-center gap-1 transition-all ${
+                      status === 'cancelled'
+                        ? 'bg-rose-500 text-white border-rose-500 shadow-sm'
+                        : 'bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <X className="w-4 h-4" />
+                    <span>งดสอน</span>
+                  </button>
+
+                  {/* Activity */}
+                  <button
+                    type="button"
+                    onClick={() => setStatus('activity')}
+                    className={`py-2 px-2.5 rounded-xl border text-xs font-medium flex flex-col items-center gap-1 transition-all ${
+                      status === 'activity'
+                        ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
+                        : 'bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <AlertCircle className="w-4 h-4" />
+                    <span>ติดกิจกรรม</span>
+                  </button>
+
+                  {/* Makeup */}
+                  <button
+                    type="button"
+                    onClick={() => setStatus('makeup')}
+                    className={`py-2 px-2.5 rounded-xl border text-xs font-medium flex flex-col items-center gap-1 transition-all ${
+                      status === 'makeup'
+                        ? 'bg-sky-500 text-white border-sky-500 shadow-sm'
+                        : 'bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <Clock className="w-4 h-4" />
+                    <span>สอนชดเชย</span>
+                  </button>
+
+                </div>
+              </div>
+
+              {/* Reason input (If cancelled or activity) */}
+              {(status === 'cancelled' || status === 'activity' || status === 'makeup') && (
+                <div className="p-3.5 bg-amber-50/70 dark:bg-amber-950/30 rounded-xl border border-amber-200 dark:border-amber-800">
+                  <label className="block text-xs font-semibold text-amber-900 dark:text-amber-200 mb-1">
+                    {status === 'cancelled'
+                      ? 'สาเหตุที่งดสอน / ไม่ได้เข้าสอน:'
+                      : status === 'activity'
+                      ? 'ชื่อกิจกรรม / วันหยุด:'
+                      : 'รายละเอียดการสอนชดเชย:'}
+                  </label>
+                  <input
+                    type="text"
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    placeholder={
+                      status === 'cancelled'
+                        ? 'เช่น ติดราชการอบรม, ลาป่วย, สัมมนาวิชาการ'
+                        : status === 'activity'
+                        ? 'เช่น งานสัปดาห์วิทยาศาสตร์, แข่งกีฬาสี, วันหยุดนักขัตฤกษ์'
+                        : 'เช่น ชดเชยคาบของวันจันทร์ที่ 21 ก.ย.'
+                    }
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700 rounded-lg text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    required={status === 'cancelled' || status === 'activity'}
+                  />
+                </div>
+              )}
+
+              {/* Lesson Plan & Next Class Preparation */}
+              <div className="p-4 bg-sky-50/60 dark:bg-sky-950/30 rounded-2xl border border-sky-200/80 dark:border-sky-800/60 space-y-3.5">
+                <div className="flex items-center justify-between border-b border-sky-200/60 dark:border-sky-800/60 pb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-lg bg-sky-500 text-white flex items-center justify-center shadow-xs">
+                      <Target className="w-3.5 h-3.5" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-900 dark:text-white">
+                        แผนการสอนและสิ่งที่ต้องเตรียมล่วงหน้า
+                      </h4>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                        วางแผนสำหรับคาบนี้ พร้อมเช็กลิสต์สื่อ/อุปกรณ์ และระบบจะแจ้งเตือนเมื่อใกล้ถึงวันสอน
+                      </p>
+                    </div>
+                  </div>
+
+                  {prepChecklist.length > 0 && (
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                      prepChecklist.every(i => i.isDone)
+                        ? 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300'
+                        : 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300'
+                    }`}>
+                      {prepChecklist.every(i => i.isDone)
+                        ? '✓ สื่อพร้อมครบแล้ว'
+                        : `เตรียมสื่อแล้ว ${prepChecklist.filter(i => i.isDone).length}/${prepChecklist.length}`}
+                    </span>
+                  )}
                 </div>
 
-                {sessionNotes.length === 0 ? (
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 italic">
-                    ไม่มีรายการนัดหมายส่งงานในวันนี้ (กดปุ่มสั่งงานด้านบนเพื่อเพิ่ม)
-                  </p>
-                ) : (
-                  <div className="space-y-1.5 pt-1">
-                    {sessionNotes.map((note) => (
-                      <div
-                        key={note.id}
-                        className="p-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2 text-xs"
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
+                {/* Topic */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    หัวข้อบทเรียน / กิจกรรมหลักที่จะสอน
+                  </label>
+                  <input
+                    type="text"
+                    value={topic}
+                    onChange={(e) => setTopic(e.target.value)}
+                    placeholder="เช่น การทดลองแรงเสียดทาน, เขียนโค้ดวนซ้ำ for loop"
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
+                  />
+                </div>
+
+                {/* Lesson Plan / Activities */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    รายละเอียดกิจกรรมการเรียนรู้ / แผนการสอน (Lesson Plan)
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={lessonPlan}
+                    onChange={(e) => setLessonPlan(e.target.value)}
+                    placeholder="เช่น แบ่งกลุ่ม 5 กลุ่ม ทำการทดลองวัดค่า... อภิปรายสรุป 15 นาทีท้ายคาบ"
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
+                  />
+                </div>
+
+                {/* Prep Checklist */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Package className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+                      <span>เช็กลิสต์สื่อและอุปกรณ์ที่ต้องเตรียม</span>
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-normal">
+                      (พิมพ์แล้วกด Enter หรือกดปุ่มเพิ่ม)
+                    </span>
+                  </label>
+
+                  {/* Input to add new checklist item */}
+                  <div className="flex gap-2 mb-2">
+                    <input
+                      type="text"
+                      value={newPrepText}
+                      onChange={(e) => setNewPrepText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddPrepItem();
+                        }
+                      }}
+                      placeholder="พิมพ์ชื่อสื่อ/อุปกรณ์ เช่น ปริ้นต์ใบงาน 40 ชุด, เบิกชุดแล็บ..."
+                      className="flex-1 px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddPrepItem}
+                      className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1 transition-colors"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>เพิ่ม</span>
+                    </button>
+                  </div>
+
+                  {/* Checklist items */}
+                  {prepChecklist.length > 0 && (
+                    <div className="space-y-1.5 bg-white/80 dark:bg-slate-900/60 p-2.5 rounded-xl border border-sky-100 dark:border-sky-900/60 max-h-44 overflow-y-auto">
+                      {prepChecklist.map((item) => (
+                        <div
+                          key={item.id}
+                          className="flex items-center justify-between gap-2 p-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/60 text-xs transition-colors"
+                        >
+                          <label className="flex items-center gap-2 cursor-pointer min-w-0 flex-1">
+                            <input
+                              type="checkbox"
+                              checked={item.isDone}
+                              onChange={() => handleTogglePrepItem(item.id)}
+                              className="w-4 h-4 text-sky-600 rounded border-slate-300 focus:ring-sky-500 cursor-pointer"
+                            />
+                            <span className={`truncate ${
+                              item.isDone ? 'line-through text-slate-400 dark:text-slate-500 font-normal' : 'text-slate-800 dark:text-slate-200 font-medium'
+                            }`}>
+                              {item.text}
+                            </span>
+                          </label>
                           <button
                             type="button"
-                            onClick={() => onToggleCompleteShortNote && onToggleCompleteShortNote(note.id)}
-                            className={`w-4 h-4 rounded flex items-center justify-center transition-all ${
-                              note.isCompleted
-                                ? 'bg-emerald-600 text-white shadow-xs'
-                                : 'border border-slate-300 dark:border-slate-600 hover:border-emerald-500'
-                            }`}
+                            onClick={() => handleDeletePrepItem(item.id)}
+                            className="text-slate-400 hover:text-rose-500 p-1 transition-colors"
+                            title="ลบรายการนี้"
                           >
-                            {note.isCompleted && <Check className="w-3 h-3 stroke-[3]" />}
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
-                          <div className="truncate">
-                            <span className={`font-semibold ${note.isCompleted ? 'line-through text-slate-400' : 'text-slate-800 dark:text-slate-100'}`}>
-                              {note.title}
-                            </span>
-                            <span className="text-[10px] text-slate-400 ml-1.5">({note.duePeriod || 'ในคาบเรียน'})</span>
-                          </div>
                         </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
 
-                        <button
-                          type="button"
-                          onClick={() => {
-                            onClose();
-                            onOpenEditShortNote && onOpenEditShortNote(note);
-                          }}
-                          className="text-[11px] text-amber-600 dark:text-amber-400 hover:underline shrink-0 font-medium"
-                        >
-                          แก้ไข
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {/* Additional Notes / Homework */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    บันทึกช่วยจำเพิ่มเติม / สิ่งที่ต้องติดตาม
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="เช่น เตือนเรื่องระเบียบห้องแล็บ, นัดหัวหน้าห้องรวบรวมงาน"
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
+                  />
+                </div>
               </div>
-            );
-          })()}
+
+              {/* Assignments Due in this Session / Date */}
+              {(() => {
+                const sessionNotes = shortNotes.filter((n) => {
+                  if (n.dueDate !== activeDate) return false;
+                  if (!selectedSubject) return true;
+                  return !n.subjectId || n.subjectId === selectedSubject.id;
+                });
+
+                return (
+                  <div className="p-3.5 bg-amber-50/70 dark:bg-amber-950/30 rounded-xl border border-amber-200/80 dark:border-amber-800/60 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                          งานที่นัดส่งในวันนี้ ({sessionNotes.length} รายการ)
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onClose();
+                          onOpenAddShortNote && onOpenAddShortNote(activeDate, selectedSubject?.id);
+                        }}
+                        className="text-[11px] font-semibold text-amber-700 dark:text-amber-300 hover:underline flex items-center gap-1"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>สั่งงาน / นัดส่งงาน</span>
+                      </button>
+                    </div>
+
+                    {sessionNotes.length === 0 ? (
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 italic">
+                        ไม่มีรายการนัดหมายส่งงานในวันนี้ (กดปุ่มสั่งงานด้านบนเพื่อเพิ่ม)
+                      </p>
+                    ) : (
+                      <div className="space-y-1.5 pt-1">
+                        {sessionNotes.map((note) => (
+                          <div
+                            key={note.id}
+                            className="p-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2 text-xs"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <button
+                                type="button"
+                                onClick={() => onToggleCompleteShortNote && onToggleCompleteShortNote(note.id)}
+                                className={`w-4 h-4 rounded flex items-center justify-center transition-all ${
+                                  note.isCompleted
+                                    ? 'bg-emerald-600 text-white shadow-xs'
+                                    : 'border border-slate-300 dark:border-slate-600 hover:border-emerald-500'
+                                }`}
+                              >
+                                {note.isCompleted && <Check className="w-3 h-3 stroke-[3]" />}
+                              </button>
+                              <div className="truncate">
+                                <span className={`font-semibold ${note.isCompleted ? 'line-through text-slate-400' : 'text-slate-800 dark:text-slate-100'}`}>
+                                  {note.title}
+                                </span>
+                                <span className="text-[10px] text-slate-400 ml-1.5">({note.duePeriod || 'ในคาบเรียน'})</span>
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onClose();
+                                onOpenEditShortNote && onOpenEditShortNote(note);
+                              }}
+                              className="text-[11px] text-amber-600 dark:text-amber-400 hover:underline shrink-0 font-medium"
+                            >
+                              แก้ไข
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </>
+          )}
 
           {/* Action Buttons */}
           <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800">

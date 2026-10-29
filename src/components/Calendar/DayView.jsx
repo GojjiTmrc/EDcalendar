@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, Clock, MapPin, Users, BookOpen, AlertCircle, CheckCircle2, Edit3, Flag, FileText, Check } from 'lucide-react';
+import { Plus, Clock, MapPin, Users, BookOpen, AlertCircle, CheckCircle2, Edit3, Flag, FileText, Check, Target, Package, BookCheck } from 'lucide-react';
 import { formatThaiDate } from '../../utils/dateUtils';
 import { SESSION_STATUS, getColorById } from '../../utils/colors';
 
@@ -235,7 +235,7 @@ export default function DayView({
                   </div>
 
                   {/* Right: Room & Grade & Action */}
-                  <div className="flex items-center gap-3 self-start sm:self-auto">
+                  <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
                     <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
                       {sess.gradeGroup && (
                         <span className="flex items-center gap-1 bg-white/80 dark:bg-black/40 px-2 py-1 rounded-lg border border-slate-200/60 dark:border-slate-700">
@@ -251,9 +251,32 @@ export default function DayView({
                       )}
                     </div>
 
+                    {/* Post-Teaching Log Direct Menu Button */}
                     <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelectSession(sess, 'postLog');
+                      }}
+                      className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 border shadow-xs transition-all ${
+                        sess.postTeachingLog
+                          ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600'
+                          : 'bg-white/95 dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
+                      }`}
+                      title="เปิดเมนูบันทึกหลังการสอนของคาบนี้"
+                    >
+                      <BookCheck className="w-3.5 h-3.5" />
+                      <span>{sess.postTeachingLog ? '✓ บันทึกหลังการสอน' : 'บันทึกหลังการสอน'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelectSession(sess, 'plan');
+                      }}
                       className="p-1.5 rounded-lg bg-white/90 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-indigo-600 shadow-sm transition-colors"
-                      title="แก้ไขสถานะหรือโน้ต"
+                      title="แก้ไขแผนการสอนหรือสถานะคาบ"
                     >
                       <Edit3 className="w-4 h-4" />
                     </button>
@@ -325,6 +348,30 @@ export default function DayView({
                         </div>
                       </div>
                     )}
+                  </div>
+                )}
+
+                {/* Post-Teaching Log Display if recorded */}
+                {sess.postTeachingLog && (
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSelectSession(sess, 'postLog');
+                    }}
+                    className="mt-3 p-3 rounded-xl bg-emerald-50/90 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/70 text-xs space-y-1 hover:border-emerald-400 transition-colors"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-emerald-900 dark:text-emerald-200 flex items-center gap-1.5">
+                        <BookCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                        <span>บันทึกหลังการสอน:</span>
+                      </span>
+                      <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 underline">
+                        แก้ไขบันทึก
+                      </span>
+                    </div>
+                    <p className="text-slate-700 dark:text-slate-200 whitespace-pre-line pl-5 leading-relaxed">
+                      {sess.postTeachingLog}
+                    </p>
                   </div>
                 )}
 

@@ -214,7 +214,10 @@ export default function App() {
       let newOverrides;
       if (existingIndex >= 0) {
         newOverrides = [...prev.overrides];
-        newOverrides[existingIndex] = overrideData;
+        newOverrides[existingIndex] = {
+          ...prev.overrides[existingIndex],
+          ...overrideData,
+        };
       } else {
         newOverrides = [...prev.overrides, overrideData];
       }
