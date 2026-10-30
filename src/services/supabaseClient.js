@@ -364,65 +364,6 @@ export function subscribeAuthChanges(callback) {
 }
 
 // Auth helper functions
-export async function signInWithGoogle() {
-  if (!supabase) throw new Error('ยังไม่ได้กำหนดค่า Supabase URL และ Key');
-
-  const health = await checkSupabaseHealth(3500);
-  if (!health.ok) {
-    throw new Error('SUPABASE_UNREACHABLE');
-  }
-
-  try {
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: window.location.origin,
-        skipBrowserRedirect: true,
-      },
-    });
-
-    if (error) throw error;
-
-    if (data?.url) {
-      try {
-        const probeRes = await fetch(data.url, { method: 'GET' });
-        if (!probeRes.ok) {
-          const errJson = await probeRes.json().catch(() => ({}));
-          if (errJson.msg?.includes('missing OAuth secret')) {
-            throw new Error('MISSING_OAUTH_SECRET');
-          }
-          if (errJson.msg?.includes('provider is not enabled')) {
-            throw new Error('PROVIDER_DISABLED');
-          }
-          throw new Error(errJson.msg || 'เกิดข้อผิดพลาดในการตรวจสอบ Google OAuth');
-        }
-        window.location.href = data.url;
-      } catch (probeErr) {
-        if (probeErr.message === 'MISSING_OAUTH_SECRET') {
-          throw new Error('ยังไม่ได้ใส่ "Client Secret" ใน Supabase Dashboard (กรุณานำ Client Secret จาก Google Cloud มาใส่ในช่อง Client Secret ของ Supabase แล้วกด Save)');
-        }
-        if (probeErr.message === 'PROVIDER_DISABLED') {
-          throw new Error('ระบบเข้าสู่ระบบด้วย Google ยังไม่ได้เปิดใช้งานใน Supabase Dashboard (กรุณาไปที่ Authentication > Providers > Google เพื่อเปิดใช้งาน)');
-        }
-        if (probeErr.message && !probeErr.message.includes('fetch') && !probeErr.message.includes('NetworkError')) {
-          throw probeErr;
-        }
-        window.location.href = data.url;
-      }
-    }
-    return data;
-  } catch (err) {
-    const msg = err.message || '';
-    if (msg === 'SUPABASE_UNREACHABLE') {
-      throw err;
-    }
-    if (msg.includes('502') || msg.includes('Bad Gateway') || msg.includes('provider') || msg.includes('disabled')) {
-      throw new Error('ระบบเข้าสู่ระบบด้วย Google ยังไม่ได้เปิดใช้งานใน Supabase Dashboard (ไปที่ Authentication > Providers > Google เพื่อเปิด)');
-    }
-    throw err;
-  }
-}
-
 export async function signInWithEmail(email, password) {
   const cleanEmail = (email || '').trim().toLowerCase();
   const cleanPassword = (password || '').trim();
