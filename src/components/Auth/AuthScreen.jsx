@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { 
   Calendar, 
   Mail, 
+  User,
   Lock, 
   Eye,
   EyeOff,
@@ -34,6 +35,7 @@ import {
 export default function AuthScreen({ onDemoMode }) {
   const [mode, setMode] = useState('login'); // 'login' | 'signup' | 'forgot'
   const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -102,8 +104,15 @@ export default function AuthScreen({ onDemoMode }) {
     setErrorMsg('');
     setSuccessMsg('');
 
-    if (!email) {
-      setErrorMsg('กรุณากรอกอีเมล');
+    const cleanInput = email.trim();
+    const cleanUsername = username.trim();
+
+    if (!cleanInput) {
+      setErrorMsg(
+        mode === 'signup'
+          ? 'กรุณากรอกอีเมล'
+          : 'กรุณากรอกอีเมลหรือชื่อผู้ใช้ (Username)'
+      );
       return;
     }
 
@@ -112,10 +121,16 @@ export default function AuthScreen({ onDemoMode }) {
         setErrorMsg('กรุณาตั้งรหัสผ่านใหม่อย่างน้อย 6 ตัวอักษร');
         return;
       }
+      if (password !== confirmPassword) {
+        setErrorMsg('รหัสผ่านยืนยันไม่ตรงกัน');
+        return;
+      }
       try {
         setLoading(true);
-        await resetPasswordForEmail(email, password);
+        await resetPasswordForEmail(cleanInput, password);
         setSuccessMsg('เปลี่ยนรหัสผ่านใหม่เรียบร้อยแล้ว! สามารถกดเข้าสู่ระบบได้เลย');
+        setPassword('');
+        setConfirmPassword('');
         setMode('login');
       } catch (err) {
         const msg = err.message || '';
@@ -126,12 +141,28 @@ export default function AuthScreen({ onDemoMode }) {
       return;
     }
 
-    if (!password) {
-      setErrorMsg('กรุณากรอกรหัสผ่าน');
-      return;
-    }
-
     if (mode === 'signup') {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(cleanInput)) {
+        setErrorMsg('รูปแบบอีเมลไม่ถูกต้อง (ตัวอย่าง: teacher@school.ac.th)');
+        return;
+      }
+      if (!cleanUsername) {
+        setErrorMsg('กรุณากรอกชื่อผู้ใช้ (Username)');
+        return;
+      }
+      if (cleanUsername.length < 3) {
+        setErrorMsg('ชื่อผู้ใช้ (Username) ต้องมีความยาวอย่างน้อย 3 ตัวอักษร');
+        return;
+      }
+      if (/\s/.test(cleanUsername) || cleanUsername.includes('@')) {
+        setErrorMsg('ชื่อผู้ใช้ (Username) ห้ามมีช่องว่างหรือเครื่องหมาย @');
+        return;
+      }
+      if (!password) {
+        setErrorMsg('กรุณากรอกรหัสผ่าน');
+        return;
+      }
       if (password.length < 6) {
         setErrorMsg('รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร');
         return;
@@ -143,7 +174,7 @@ export default function AuthScreen({ onDemoMode }) {
 
       try {
         setLoading(true);
-        const data = await signUpWithEmail(email, password);
+        const data = await signUpWithEmail(cleanInput, password, cleanUsername);
         if (data?.user && !data?.session) {
           setSuccessMsg('สมัครสมาชิกสำเร็จ! กรุณาตรวจสอบอีเมลของคุณเพื่อยืนยันบัญชี');
         } else {
@@ -158,14 +189,19 @@ export default function AuthScreen({ onDemoMode }) {
       return;
     }
 
+    if (!password) {
+      setErrorMsg('กรุณากรอกรหัสผ่าน');
+      return;
+    }
+
     // Login mode
     try {
       setLoading(true);
-      await signInWithEmail(email, password);
+      await signInWithEmail(cleanInput, password);
     } catch (err) {
       const msg = err.message || '';
       if (msg.includes('Invalid login credentials')) {
-        setErrorMsg('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
+        setErrorMsg('อีเมล/ชื่อผู้ใช้ หรือรหัสผ่านไม่ถูกต้อง');
       } else {
         setErrorMsg(msg || 'เข้าสู่ระบบไม่สำเร็จ');
       }
@@ -380,25 +416,53 @@ export default function AuthScreen({ onDemoMode }) {
           </div>
         )}
 
-        {/* Email Form */}
+        {/* Auth Form */}
         <form onSubmit={handleSubmit} autoComplete="off" className="space-y-3.5">
           <div>
             <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
-              อีเมล
+              {mode === 'signup' ? 'อีเมล (Email)' : 'อีเมล หรือ ชื่อผู้ใช้ (Username)'}
             </label>
             <div className="relative">
-              <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              {mode === 'signup' || email.includes('@') ? (
+                <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              ) : (
+                <User className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              )}
               <input
-                type="email"
+                type={mode === 'signup' ? 'email' : 'text'}
                 required
                 autoComplete="off"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="teacher@school.ac.th"
+                placeholder={
+                  mode === 'signup'
+                    ? 'teacher@school.ac.th'
+                    : 'กรอกชื่อผู้ใช้ หรือ teacher@school.ac.th'
+                }
                 className="w-full pl-9 pr-4 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 dark:text-slate-200 transition-all"
               />
             </div>
           </div>
+
+          {mode === 'signup' && (
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+                ชื่อผู้ใช้ (Username)
+              </label>
+              <div className="relative">
+                <User className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  required
+                  autoComplete="off"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="ตั้งชื่อผู้ใช้ เช่น kru_somchai (อย่างน้อย 3 ตัวอักษร)"
+                  className="w-full pl-9 pr-4 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 dark:text-slate-200 transition-all"
+                />
+              </div>
+            </div>
+          )}
 
           <div>
             <div className="flex items-center justify-between mb-1">
@@ -442,10 +506,10 @@ export default function AuthScreen({ onDemoMode }) {
             </div>
           </div>
 
-          {mode === 'signup' && (
+          {(mode === 'signup' || mode === 'forgot') && (
             <div>
               <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
-                ยืนยันรหัสผ่าน
+                {mode === 'forgot' ? 'ยืนยันรหัสผ่านใหม่' : 'ยืนยันรหัสผ่าน'}
               </label>
               <div className="relative">
                 <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />

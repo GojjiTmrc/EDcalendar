@@ -69,6 +69,19 @@ export default function Navbar({
     setTheme(theme === 'dark' ? 'light' : 'dark');
   };
 
+  const displayName = user
+    ? user.username ||
+      user.user_metadata?.username ||
+      user.email?.split('@')[0] ||
+      user.user_metadata?.name ||
+      'ผู้ใช้งาน'
+    : '';
+  const profileTooltip = user
+    ? user.email && displayName && displayName !== user.email
+      ? `${displayName} (${user.email})`
+      : user.email || displayName
+    : '';
+
   return (
     <>
       <header className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800 shadow-sm no-print">
@@ -245,13 +258,13 @@ export default function Navbar({
               <div className="flex items-center gap-2 pl-2 border-l border-slate-200 dark:border-slate-800">
                 <div 
                   className="flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-200"
-                  title={user.email}
+                  title={profileTooltip}
                 >
                   <div className="w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
-                    {user.email ? user.email[0].toUpperCase() : <User className="w-3.5 h-3.5" />}
+                    {displayName ? displayName[0].toUpperCase() : <User className="w-3.5 h-3.5" />}
                   </div>
                   <span className="hidden xl:inline max-w-[120px] truncate">
-                    {user.email?.split('@')[0]}
+                    {displayName}
                   </span>
                 </div>
                 <button

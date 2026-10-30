@@ -150,9 +150,92 @@ function emailToAccountDocId(email) {
     .replace(/[^a-z0-9]/g, '_');
 }
 
-async function fetchCloudAccount(email, timeoutMs = 2500) {
+export function getAccountUsername(acc) {
+  if (!acc) return '';
+  if (acc.username && String(acc.username).trim()) {
+    return String(acc.username).trim();
+  }
+  const email = String(acc.email || '').trim();
+  return email.includes('@') ? email.split('@')[0] : email;
+}
+
+function normalizeAccountRecord(acc) {
+  if (!acc || !acc.email) return null;
+  const email = String(acc.email).trim();
+  const username = getAccountUsername(acc);
   const docId = emailToAccountDocId(email);
+  return {
+    ...acc,
+    id: acc.id || `user-${docId}`,
+    email,
+    username,
+    name: acc.name || username || email.split('@')[0],
+  };
+}
+
+function matchesAccountIdentifier(acc, identifier) {
+  const clean = String(identifier || '').trim().toLowerCase();
+  if (!clean || !acc) return false;
+  const accEmail = String(acc.email || '').trim().toLowerCase();
+  const accUsername = getAccountUsername(acc).toLowerCase();
+  const emailPrefix = accEmail.includes('@') ? accEmail.split('@')[0] : accEmail;
+  return (
+    accEmail === clean ||
+    (accUsername && accUsername === clean) ||
+    (emailPrefix && emailPrefix === clean)
+  );
+}
+
+function parseCloudAccountFields(f) {
+  if (!f || !f.email?.stringValue) return null;
+  const email = String(f.email.stringValue).trim();
+  const docId = emailToAccountDocId(email);
+  const fallbackUsername = email.includes('@') ? email.split('@')[0] : email;
+  const username = String(f.username?.stringValue || fallbackUsername).trim();
+  return normalizeAccountRecord({
+    id: f.id?.stringValue || `user-${docId}`,
+    email,
+    username,
+    password: f.password?.stringValue || '',
+    name: f.name?.stringValue || username || fallbackUsername,
+    updatedAt: f.updatedAt?.stringValue || new Date().toISOString(),
+  });
+}
+
+async function fetchAllCloudAccounts(timeoutMs = 2500) {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const res = await fetch(`${CLOUD_FIRESTORE_BASE_URL}/edcalendar_accounts`, {
+      method: 'GET',
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (!res.ok) return [];
+    const json = await res.json();
+    const docs = Array.isArray(json?.documents) ? json.documents : [];
+    const byEmail = new Map();
+    docs.forEach((doc) => {
+      const parsed = parseCloudAccountFields(doc?.fields);
+      if (parsed && parsed.email) {
+        const key = parsed.email.toLowerCase();
+        const existing = byEmail.get(key);
+        if (!existing || (parsed.username && !existing.username)) {
+          byEmail.set(key, parsed);
+        }
+      }
+    });
+    return Array.from(byEmail.values());
+  } catch {
+    return [];
+  }
+}
+
+async function fetchCloudAccount(identifier, timeoutMs = 2500) {
+  const clean = String(identifier || '').trim().toLowerCase();
+  const docId = emailToAccountDocId(clean);
   if (!docId) return null;
+
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -161,47 +244,58 @@ async function fetchCloudAccount(email, timeoutMs = 2500) {
       signal: controller.signal,
     });
     clearTimeout(timer);
-    if (!res.ok) return null;
-    const json = await res.json();
-    const f = json?.fields;
-    if (!f || !f.email?.stringValue) return null;
-    return {
-      id: f.id?.stringValue || `user-${docId}`,
-      email: f.email.stringValue,
-      password: f.password?.stringValue || '',
-      name: f.name?.stringValue || f.email.stringValue.split('@')[0],
-      updatedAt: f.updatedAt?.stringValue || new Date().toISOString(),
-    };
+    if (res.ok) {
+      const json = await res.json();
+      const parsed = parseCloudAccountFields(json?.fields);
+      if (parsed) return parsed;
+    }
   } catch {
-    return null;
+    // Continue to collection lookup fallback
   }
+
+  // Fallback: search all cloud account records by email, username, or email prefix
+  const allCloud = await fetchAllCloudAccounts(timeoutMs);
+  return allCloud.find((acc) => matchesAccountIdentifier(acc, clean)) || null;
 }
 
 async function saveCloudAccount(account, timeoutMs = 3000) {
-  if (!account || !account.email) return;
-  const docId = emailToAccountDocId(account.email);
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    const body = {
-      fields: {
-        id: { stringValue: String(account.id || `user-${docId}`) },
-        email: { stringValue: String(account.email).trim() },
-        password: { stringValue: String(account.password || '') },
-        name: { stringValue: String(account.name || account.email.split('@')[0]) },
-        updatedAt: { stringValue: new Date().toISOString() },
-      },
-    };
-    await fetch(`${CLOUD_FIRESTORE_BASE_URL}/edcalendar_accounts/${docId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-    clearTimeout(timer);
-  } catch {
-    // Fallback to local if offline
-  }
+  const normalized = normalizeAccountRecord(account);
+  if (!normalized || !normalized.email) return;
+
+  const emailDocId = emailToAccountDocId(normalized.email);
+  const usernameDocId = emailToAccountDocId(normalized.username);
+  const nowIso = new Date().toISOString();
+
+  const body = {
+    fields: {
+      id: { stringValue: String(normalized.id || `user-${emailDocId}`) },
+      email: { stringValue: String(normalized.email).trim() },
+      username: { stringValue: String(normalized.username).trim() },
+      password: { stringValue: String(normalized.password || '') },
+      name: { stringValue: String(normalized.name || normalized.username) },
+      updatedAt: { stringValue: nowIso },
+    },
+  };
+
+  const docIds = Array.from(new Set([emailDocId, usernameDocId].filter(Boolean)));
+
+  await Promise.all(
+    docIds.map(async (docId) => {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        await fetch(`${CLOUD_FIRESTORE_BASE_URL}/edcalendar_accounts/${docId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        });
+        clearTimeout(timer);
+      } catch {
+        // Fallback to local if offline
+      }
+    })
+  );
 }
 
 // ----------------- Built-in & Local Account Auth System -----------------
@@ -212,9 +306,18 @@ const DEFAULT_ACCOUNTS = [
   {
     id: 'user-godgittipong127',
     email: 'godgittipong127@gmail.com',
+    username: 'godgittipong127',
     password: 'Godtmrc000',
     name: 'ครูกิตติพงษ์ (Gojji)',
     createdAt: '2026-10-19T00:00:00.000Z',
+  },
+  {
+    id: 'user-tlegx2gmailcom',
+    email: 'tlegx2@gmail.com',
+    username: 'tlegx2',
+    password: '450450450.',
+    name: 'tlegx2',
+    createdAt: '2026-10-19T05:07:07.560Z',
   },
 ];
 
@@ -236,11 +339,21 @@ export function getLocalAccounts() {
     const raw = localStorage.getItem(LOCAL_ACCOUNTS_KEY);
     const stored = raw ? JSON.parse(raw) : [];
     const map = new Map();
-    DEFAULT_ACCOUNTS.forEach((acc) => map.set(acc.email.toLowerCase(), acc));
+    DEFAULT_ACCOUNTS.forEach((acc) => {
+      const norm = normalizeAccountRecord(acc);
+      if (norm) map.set(norm.email.toLowerCase(), norm);
+    });
     if (Array.isArray(stored)) {
       stored.forEach((acc) => {
         if (acc && acc.email && acc.email.toLowerCase() !== 'godgiitpong127@gmail.com') {
-          map.set(acc.email.toLowerCase(), acc);
+          const key = acc.email.toLowerCase();
+          const existing = map.get(key);
+          const norm = normalizeAccountRecord({
+            ...existing,
+            ...acc,
+            username: acc.username || existing?.username || getAccountUsername(acc),
+          });
+          if (norm) map.set(key, norm);
         }
       });
     }
@@ -262,26 +375,61 @@ function saveLocalAccounts(accounts) {
 }
 
 function upsertLocalAccount(acc) {
-  if (!acc || !acc.email) return;
+  const norm = normalizeAccountRecord(acc);
+  if (!norm || !norm.email) return;
   const accounts = getLocalAccounts();
-  const cleanEmail = acc.email.toLowerCase();
+  const cleanEmail = norm.email.toLowerCase();
   const idx = accounts.findIndex((a) => a.email.toLowerCase() === cleanEmail);
   if (idx >= 0) {
-    accounts[idx] = { ...accounts[idx], ...acc };
+    accounts[idx] = normalizeAccountRecord({ ...accounts[idx], ...norm });
   } else {
-    accounts.push(acc);
+    accounts.push(norm);
   }
   saveLocalAccounts(accounts);
+}
+
+function buildSessionUser(acc) {
+  const norm = normalizeAccountRecord(acc);
+  const cleanEmail = String(norm?.email || '').trim().toLowerCase();
+  const username = getAccountUsername(norm);
+  return {
+    id: norm?.id || `user-${cleanEmail.replace(/[^a-z0-9]/g, '')}`,
+    email: norm?.email || '',
+    username,
+    user_metadata: {
+      name: norm?.name || username,
+      username,
+    },
+    isCloudAccount: true,
+  };
 }
 
 export function getLocalSession() {
   if (typeof window === 'undefined') return null;
   try {
-    getLocalAccounts();
+    const accounts = getLocalAccounts();
     const raw = localStorage.getItem(LOCAL_SESSION_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    return parsed?.user || null;
+    const sessionUser = parsed?.user || null;
+    if (!sessionUser) return null;
+
+    if (!sessionUser.username) {
+      const matched = accounts.find(
+        (a) =>
+          (sessionUser.id && a.id === sessionUser.id) ||
+          (sessionUser.email && a.email.toLowerCase() === sessionUser.email.toLowerCase())
+      );
+      const resolvedUsername = matched
+        ? getAccountUsername(matched)
+        : getAccountUsername(sessionUser);
+      sessionUser.username = resolvedUsername;
+      sessionUser.user_metadata = {
+        ...(sessionUser.user_metadata || {}),
+        username: resolvedUsername,
+      };
+    }
+    return sessionUser;
   } catch {
     return null;
   }
@@ -357,39 +505,34 @@ export function subscribeAuthChanges(callback) {
 }
 
 // Auth helper functions
-export async function signInWithEmail(email, password) {
-  const cleanEmail = (email || '').trim().toLowerCase();
+export async function signInWithEmail(identifier, password) {
+  const cleanIdentifier = (identifier || '').trim().toLowerCase();
   const cleanPassword = (password || '').trim();
 
-  // 1. Check Cloud Account Registry first (enables cross-device login & password changes)
-  const cloudAcc = await fetchCloudAccount(cleanEmail, 2500);
+  if (!cleanIdentifier || !password) {
+    throw new Error('กรุณากรอกอีเมล/ชื่อผู้ใช้ และรหัสผ่าน');
+  }
+
+  // 1. Check Cloud Account Registry first (supports both Email and Username across devices)
+  const cloudAcc = await fetchCloudAccount(cleanIdentifier, 2500);
   if (cloudAcc) {
     upsertLocalAccount(cloudAcc);
     if (cloudAcc.password === password || cloudAcc.password === cleanPassword) {
-      const sessionUser = {
-        id: cloudAcc.id || `user-${cleanEmail.replace(/[^a-z0-9]/g, '')}`,
-        email: cloudAcc.email,
-        user_metadata: { name: cloudAcc.name || cloudAcc.email.split('@')[0] },
-        isCloudAccount: true,
-      };
+      const sessionUser = buildSessionUser(cloudAcc);
+      saveCloudAccount(cloudAcc);
       setLocalSession(sessionUser);
       return { user: sessionUser, session: { user: sessionUser } };
     }
   }
 
-  // 2. Check built-in / local accounts cache
+  // 2. Check built-in / local accounts cache (matches email, username, or email prefix)
   const accounts = getLocalAccounts();
-  const matched = accounts.find((acc) => acc.email.toLowerCase() === cleanEmail);
+  const matched = accounts.find((acc) => matchesAccountIdentifier(acc, cleanIdentifier));
 
   if (matched) {
     if (matched.password === password || matched.password === cleanPassword) {
-      const sessionUser = {
-        id: matched.id || `user-${cleanEmail.replace(/[^a-z0-9]/g, '')}`,
-        email: matched.email,
-        user_metadata: { name: matched.name || matched.email.split('@')[0] },
-        isCloudAccount: true,
-      };
-      // Ensure account is also synced to cloud registry
+      const sessionUser = buildSessionUser(matched);
+      // Ensure account & username index are synced to cloud registry
       saveCloudAccount(matched);
       setLocalSession(sessionUser);
       return { user: sessionUser, session: { user: sessionUser } };
@@ -400,51 +543,93 @@ export async function signInWithEmail(email, password) {
 
   // 3. Check Supabase if online
   if (supabase) {
-    const health = await checkSupabaseHealth(2500);
-    if (health.ok) {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: cleanEmail,
-        password,
-      });
-      if (error) throw error;
-      return data;
+    const targetEmail = cleanIdentifier.includes('@')
+      ? cleanIdentifier
+      : matched?.email || cloudAcc?.email || '';
+
+    if (targetEmail && targetEmail.includes('@')) {
+      const health = await checkSupabaseHealth(2500);
+      if (health.ok) {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: targetEmail,
+          password,
+        });
+        if (error) throw error;
+        return data;
+      }
     }
   }
 
   throw new Error('Invalid login credentials');
 }
 
-export async function signUpWithEmail(email, password) {
-  const cleanEmail = (email || '').trim().toLowerCase();
-  if (!cleanEmail || !password) {
-    throw new Error('กรุณากรอกอีเมลและรหัสผ่านให้ครบถ้วน');
+export async function signUpWithEmail(email, password, username = '') {
+  const rawEmail = String(email || '').trim();
+  const cleanEmail = rawEmail.toLowerCase();
+  const rawUsername = String(username || '').trim();
+  const cleanUsername = rawUsername.toLowerCase();
+
+  if (!cleanEmail || !cleanUsername || !password) {
+    throw new Error('กรุณากรอกอีเมล ชื่อผู้ใช้ (Username) และรหัสผ่านให้ครบถ้วน');
   }
 
-  const isGojjiAlias = cleanEmail === 'godgittipong127@gmail.com';
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(rawEmail)) {
+    throw new Error('รูปแบบอีเมลไม่ถูกต้อง');
+  }
+
+  if (rawUsername.length < 3) {
+    throw new Error('ชื่อผู้ใช้ (Username) ต้องมีความยาวอย่างน้อย 3 ตัวอักษร');
+  }
+
+  if (/\s/.test(rawUsername) || rawUsername.includes('@')) {
+    throw new Error('ชื่อผู้ใช้ (Username) ห้ามมีช่องว่างหรือเครื่องหมาย @');
+  }
+
+  // Pull latest cloud accounts to strictly enforce 1 Email = 1 ID and 1 Username = 1 ID
+  const [cloudList, directByEmail, directByUsername] = await Promise.all([
+    fetchAllCloudAccounts(2500),
+    fetchCloudAccount(cleanEmail, 2000),
+    fetchCloudAccount(cleanUsername, 2000),
+  ]);
+
+  cloudList.forEach((acc) => upsertLocalAccount(acc));
+  if (directByEmail) upsertLocalAccount(directByEmail);
+  if (directByUsername) upsertLocalAccount(directByUsername);
 
   const accounts = getLocalAccounts();
-  const existingIdx = accounts.findIndex((acc) => acc.email.toLowerCase() === cleanEmail);
-  const newAccount = {
-    id: isGojjiAlias
-      ? 'user-godgittipong127'
-      : existingIdx >= 0
-      ? accounts[existingIdx].id
-      : `user-${cleanEmail.replace(/[^a-z0-9]/g, '')}`,
-    email: email.trim(),
+
+  // Check if Email is already registered (1 Email = 1 ID)
+  const emailExists = accounts.some(
+    (acc) => String(acc.email || '').trim().toLowerCase() === cleanEmail
+  );
+  if (emailExists) {
+    throw new Error('อีเมลนี้ถูกใช้สมัครสมาชิกไปแล้ว (1 อีเมลสามารถสมัครได้เพียง 1 บัญชีเท่านั้น)');
+  }
+
+  // Check if Username is already taken (1 Username = 1 ID)
+  const usernameExists = accounts.some((acc) => {
+    const accUser = getAccountUsername(acc).toLowerCase();
+    const accPrefix = String(acc.email || '').trim().toLowerCase().split('@')[0];
+    return accUser === cleanUsername || accPrefix === cleanUsername;
+  });
+  if (usernameExists) {
+    throw new Error('ชื่อผู้ใช้นี้ (Username) มีผู้ใช้งานแล้ว กรุณาตั้งชื่อผู้ใช้อื่น');
+  }
+
+  const newAccount = normalizeAccountRecord({
+    id: `user-${cleanEmail.replace(/[^a-z0-9]/g, '')}`,
+    email: rawEmail,
+    username: rawUsername,
     password,
-    name: existingIdx >= 0 ? accounts[existingIdx].name : email.trim().split('@')[0],
-    createdAt: existingIdx >= 0 ? accounts[existingIdx].createdAt : new Date().toISOString(),
-  };
+    name: rawUsername,
+    createdAt: new Date().toISOString(),
+  });
 
   upsertLocalAccount(newAccount);
   await saveCloudAccount(newAccount);
 
-  const sessionUser = {
-    id: newAccount.id,
-    email: newAccount.email,
-    user_metadata: { name: newAccount.name },
-    isCloudAccount: true,
-  };
+  const sessionUser = buildSessionUser(newAccount);
   setLocalSession(sessionUser);
 
   // Also attempt Supabase registration in background if reachable
@@ -452,7 +637,13 @@ export async function signUpWithEmail(email, password) {
     checkSupabaseHealth(2000)
       .then((health) => {
         if (health.ok) {
-          supabase.auth.signUp({ email: cleanEmail, password }).catch(() => {});
+          supabase.auth
+            .signUp({
+              email: cleanEmail,
+              password,
+              options: { data: { username: rawUsername, name: rawUsername } },
+            })
+            .catch(() => {});
         }
       })
       .catch(() => {});
@@ -461,15 +652,19 @@ export async function signUpWithEmail(email, password) {
   return { user: sessionUser, session: { user: sessionUser } };
 }
 
-export async function resetPasswordForEmail(email, newPassword = '') {
-  const cleanEmail = (email || '').trim().toLowerCase();
-  const cloudAcc = await fetchCloudAccount(cleanEmail, 2500);
+export async function resetPasswordForEmail(identifier, newPassword = '') {
+  const cleanIdentifier = (identifier || '').trim().toLowerCase();
+  if (!cleanIdentifier) {
+    throw new Error('กรุณากรอกอีเมลหรือชื่อผู้ใช้');
+  }
+
+  const cloudAcc = await fetchCloudAccount(cleanIdentifier, 2500);
   if (cloudAcc) {
     upsertLocalAccount(cloudAcc);
   }
 
   const accounts = getLocalAccounts();
-  const idx = accounts.findIndex((acc) => acc.email.toLowerCase() === cleanEmail);
+  const idx = accounts.findIndex((acc) => matchesAccountIdentifier(acc, cleanIdentifier));
 
   if (idx >= 0 && newPassword) {
     accounts[idx].password = newPassword;
@@ -478,10 +673,10 @@ export async function resetPasswordForEmail(email, newPassword = '') {
     return { updated: true };
   }
 
-  if (supabase) {
+  if (supabase && cleanIdentifier.includes('@')) {
     const health = await checkSupabaseHealth(2500);
     if (health.ok) {
-      const { data, error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+      const { data, error } = await supabase.auth.resetPasswordForEmail(cleanIdentifier, {
         redirectTo: window.location.origin,
       });
       if (error) throw error;
@@ -493,7 +688,7 @@ export async function resetPasswordForEmail(email, newPassword = '') {
     return { localAccountFound: true };
   }
 
-  throw new Error('ไม่พบบัญชีอีเมลนี้ในระบบ');
+  throw new Error('ไม่พบบัญชีผู้ใช้นี้ในระบบ (กรุณาตรวจสอบอีเมลหรือชื่อผู้ใช้)');
 }
 
 export async function signOut() {
