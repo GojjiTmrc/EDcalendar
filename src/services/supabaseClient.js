@@ -198,6 +198,9 @@ function parseCloudAccountFields(f) {
     username,
     password: f.password?.stringValue || '',
     name: f.name?.stringValue || username || fallbackUsername,
+    teacherName: f.teacherName?.stringValue || '',
+    schoolName: f.schoolName?.stringValue || '',
+    academicRole: f.academicRole?.stringValue || '',
     updatedAt: f.updatedAt?.stringValue || new Date().toISOString(),
   });
 }
@@ -273,6 +276,9 @@ async function saveCloudAccount(account, timeoutMs = 3000) {
       username: { stringValue: String(normalized.username).trim() },
       password: { stringValue: String(normalized.password || '') },
       name: { stringValue: String(normalized.name || normalized.username) },
+      teacherName: { stringValue: String(normalized.teacherName || '') },
+      schoolName: { stringValue: String(normalized.schoolName || '') },
+      academicRole: { stringValue: String(normalized.academicRole || '') },
       updatedAt: { stringValue: nowIso },
     },
   };
@@ -392,13 +398,24 @@ function buildSessionUser(acc) {
   const norm = normalizeAccountRecord(acc);
   const cleanEmail = String(norm?.email || '').trim().toLowerCase();
   const username = getAccountUsername(norm);
+  if (typeof window !== 'undefined') {
+    if (norm?.teacherName) localStorage.setItem('edcalendar_teacher_name', norm.teacherName);
+    if (norm?.schoolName) localStorage.setItem('edcalendar_school_name', norm.schoolName);
+    if (norm?.academicRole) localStorage.setItem('edcalendar_academic_role', norm.academicRole);
+  }
   return {
     id: norm?.id || `user-${cleanEmail.replace(/[^a-z0-9]/g, '')}`,
     email: norm?.email || '',
     username,
+    teacherName: norm?.teacherName || '',
+    schoolName: norm?.schoolName || '',
+    academicRole: norm?.academicRole || '',
     user_metadata: {
       name: norm?.name || username,
       username,
+      teacherName: norm?.teacherName || '',
+      schoolName: norm?.schoolName || '',
+      academicRole: norm?.academicRole || '',
     },
     isCloudAccount: true,
   };
@@ -689,6 +706,94 @@ export async function resetPasswordForEmail(identifier, newPassword = '') {
   }
 
   throw new Error('ไม่พบบัญชีผู้ใช้นี้ในระบบ (กรุณาตรวจสอบอีเมลหรือชื่อผู้ใช้)');
+}
+
+export async function updateAccountProfile({
+  userId,
+  email,
+  newUsername,
+  displayName,
+  teacherName,
+  schoolName,
+  academicRole,
+  newPassword,
+}) {
+  const cleanEmail = String(email || '').trim().toLowerCase();
+  const rawUsername = String(newUsername || '').trim();
+  const cleanUsername = rawUsername.toLowerCase();
+
+  if (!rawUsername || rawUsername.length < 3) {
+    throw new Error('ชื่อผู้ใช้ (Username) ต้องมีความยาวอย่างน้อย 3 ตัวอักษร');
+  }
+  if (/\s/.test(rawUsername) || rawUsername.includes('@')) {
+    throw new Error('ชื่อผู้ใช้ (Username) ห้ามมีช่องว่างหรือเครื่องหมาย @');
+  }
+
+  // Pull cloud accounts to ensure username uniqueness across all users
+  const cloudList = await fetchAllCloudAccounts(2500);
+  cloudList.forEach((acc) => upsertLocalAccount(acc));
+
+  const accounts = getLocalAccounts();
+  const currentIdx = accounts.findIndex(
+    (acc) =>
+      (userId && acc.id === userId) ||
+      (cleanEmail && String(acc.email || '').trim().toLowerCase() === cleanEmail)
+  );
+
+  // Check if another user already uses this username
+  const duplicateOther = accounts.some((acc, idx) => {
+    if (idx === currentIdx) return false;
+    if (userId && acc.id === userId) return false;
+    if (cleanEmail && String(acc.email || '').trim().toLowerCase() === cleanEmail) return false;
+    const accUser = getAccountUsername(acc).toLowerCase();
+    const accPrefix = String(acc.email || '').trim().toLowerCase().split('@')[0];
+    return accUser === cleanUsername || accPrefix === cleanUsername;
+  });
+
+  if (duplicateOther) {
+    throw new Error('ชื่อผู้ใช้นี้ (Username) มีผู้ใช้งานแล้ว กรุณาตั้งชื่อผู้ใช้อื่น');
+  }
+
+  const existing = currentIdx >= 0 ? accounts[currentIdx] : { id: userId, email };
+  const oldUsername = getAccountUsername(existing);
+
+  const updatedAccount = normalizeAccountRecord({
+    ...existing,
+    username: rawUsername,
+    name: String(displayName || rawUsername).trim(),
+    teacherName: teacherName !== undefined ? String(teacherName).trim() : existing.teacherName || '',
+    schoolName: schoolName !== undefined ? String(schoolName).trim() : existing.schoolName || '',
+    academicRole: academicRole !== undefined ? String(academicRole).trim() : existing.academicRole || '',
+    password: newPassword ? newPassword : existing.password,
+    updatedAt: new Date().toISOString(),
+  });
+
+  if (currentIdx >= 0) {
+    accounts[currentIdx] = updatedAccount;
+    saveLocalAccounts(accounts);
+  } else {
+    upsertLocalAccount(updatedAccount);
+  }
+
+  // Remove old username doc on Firestore if username changed and isn't the email docId
+  const oldDocId = emailToAccountDocId(oldUsername);
+  const newDocId = emailToAccountDocId(rawUsername);
+  const emailDocId = emailToAccountDocId(updatedAccount.email);
+  if (oldDocId && oldDocId !== newDocId && oldDocId !== emailDocId) {
+    try {
+      await fetch(`${CLOUD_FIRESTORE_BASE_URL}/edcalendar_accounts/${oldDocId}`, {
+        method: 'DELETE',
+      });
+    } catch {
+      // Ignore delete error if offline
+    }
+  }
+
+  await saveCloudAccount(updatedAccount);
+
+  const sessionUser = buildSessionUser(updatedAccount);
+  setLocalSession(sessionUser);
+  return sessionUser;
 }
 
 export async function signOut() {

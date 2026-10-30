@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   Plus, 
   Clock, 
@@ -6,36 +6,30 @@ import {
   Users, 
   BookOpen, 
   Printer, 
-  Settings, 
   Filter, 
   Sparkles, 
-  AlertCircle, 
   Edit3,
   Smartphone,
   LayoutGrid,
-  ChevronRight
 } from 'lucide-react';
-import { SCHOOL_DAYS, timeToMinutes, formatDurationThai, jsDayToThaiDay } from '../../utils/dateUtils';
+import { SCHOOL_DAYS, timeToMinutes, jsDayToThaiDay } from '../../utils/dateUtils';
 import { getColorById } from '../../utils/colors';
 import {
-  DEFAULT_PERIODS,
   DEFAULT_ACTIVITIES,
   getStoredPeriods,
-  saveStoredPeriods,
   getSlotPeriodMapping,
 } from '../../utils/periodConfig';
-import PeriodSettingsModal from './PeriodSettingsModal';
 
 export default function TimetableGrid({
   slots = [],
   subjects = [],
   activeSemester,
+  periods: propPeriods,
   onAddSlot,
   onEditSlot,
   onPrint,
 }) {
-  const [periods, setPeriods] = useState(() => getStoredPeriods());
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const periods = propPeriods || getStoredPeriods();
   const [selectedSubjectFilter, setSelectedSubjectFilter] = useState('all');
 
   // Mobile responsive view modes: 'daily' (vertical cards by day) | 'matrix' (full horizontal scroll table)
@@ -69,11 +63,6 @@ export default function TimetableGrid({
   const hoursPart = Math.floor(totalMinutes / 60);
   const minsPart = totalMinutes % 60;
   const uniqueSubjectsCount = new Set(semesterSlots.map(s => s.subjectId)).size;
-
-  const handleSavePeriods = (newPeriods) => {
-    setPeriods(newPeriods);
-    saveStoredPeriods(newPeriods);
-  };
 
   const teachingPeriods = periods.filter(p => !p.isLunch);
   const lunchPeriod = periods.find(p => p.isLunch) || { label: 'พักเที่ยง', startTime: '12:00', endTime: '13:00' };
@@ -144,16 +133,6 @@ export default function TimetableGrid({
               ))}
             </select>
           </div>
-
-          {/* Period Settings button */}
-          <button
-            onClick={() => setIsSettingsOpen(true)}
-            title="ตั้งค่าเวลาคาบเรียนกริ่งโรงเรียน"
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-xl border border-slate-200 dark:border-slate-700 transition-colors"
-          >
-            <Settings className="w-3.5 h-3.5 text-slate-500" />
-            <span className="hidden sm:inline">ตั้งค่าเวลาคาบ</span>
-          </button>
 
           {/* Print button */}
           <button
@@ -617,14 +596,6 @@ export default function TimetableGrid({
           </table>
         </div>
       </div>
-
-      {/* Period Settings Modal */}
-      <PeriodSettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        periods={periods}
-        onSave={handleSavePeriods}
-      />
 
     </div>
   );

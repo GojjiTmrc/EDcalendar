@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, Printer, FileText } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Printer } from 'lucide-react';
 import { formatThaiDate } from '../../utils/dateUtils';
 
 export default function SummaryPrintView({
@@ -8,9 +8,26 @@ export default function SummaryPrintView({
   summaryData,
   semester,
 }) {
-  const [teacherName, setTeacherName] = useState('ครูผู้สอน');
-  const [schoolName, setSchoolName] = useState('โรงเรียน / วิทยาลัย');
-  const [academicRole, setAcademicRole] = useState('กลุ่มสาระการเรียนรู้วิทยาศาสตร์และเทคโนโลยี');
+  const [teacherName, setTeacherName] = useState(
+    () => localStorage.getItem('edcalendar_teacher_name') || 'นายกิตติพงษ์ โพธิวาระ'
+  );
+  const [schoolName, setSchoolName] = useState(
+    () => localStorage.getItem('edcalendar_school_name') || 'โรงเรียนสุมเส้าพิทยาคาร'
+  );
+  const [academicRole, setAcademicRole] = useState(
+    () => localStorage.getItem('edcalendar_academic_role') || 'กลุ่มสาระการเรียนรู้วิทยาศาสตร์และเทคโนโลยี'
+  );
+
+  useEffect(() => {
+    if (isOpen) {
+      setTeacherName(localStorage.getItem('edcalendar_teacher_name') || 'นายกิตติพงษ์ โพธิวาระ');
+      setSchoolName(localStorage.getItem('edcalendar_school_name') || 'โรงเรียนสุมเส้าพิทยาคาร');
+      setAcademicRole(
+        localStorage.getItem('edcalendar_academic_role') ||
+          'กลุ่มสาระการเรียนรู้วิทยาศาสตร์และเทคโนโลยี'
+      );
+    }
+  }, [isOpen]);
 
   if (!isOpen || !summaryData) return null;
 

@@ -1,13 +1,10 @@
-import React, { useState } from 'react';
-import { X, Printer, Settings, Award } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Printer, Award } from 'lucide-react';
 import { SCHOOL_DAYS, timeToMinutes, formatThaiDate } from '../../utils/dateUtils';
 import {
-  DEFAULT_PERIODS,
   DEFAULT_ACTIVITIES,
-  DEFAULT_SIGNATURES,
   getStoredPeriods,
   getStoredSignatures,
-  saveStoredSignatures,
   getSlotPeriodMapping,
 } from '../../utils/periodConfig';
 
@@ -18,11 +15,20 @@ export default function TimetablePrintView({
   subjects = [],
   activeSemester,
 }) {
-  const [periods] = useState(() => getStoredPeriods());
+  const [periods, setPeriods] = useState(() => getStoredPeriods());
   const [teacherName, setTeacherName] = useState(() => localStorage.getItem('edcalendar_teacher_name') || 'นายกิตติพงษ์ โพธิวาระ');
   const [schoolName, setSchoolName] = useState(() => localStorage.getItem('edcalendar_school_name') || 'โรงเรียนสุมเส้าพิทยาคาร');
   const [docDate, setDocDate] = useState(() => formatThaiDate(new Date(), 'short'));
   const [signatures, setSignatures] = useState(() => getStoredSignatures());
+
+  useEffect(() => {
+    if (isOpen) {
+      setPeriods(getStoredPeriods());
+      setSignatures(getStoredSignatures());
+      setTeacherName(localStorage.getItem('edcalendar_teacher_name') || 'นายกิตติพงษ์ โพธิวาระ');
+      setSchoolName(localStorage.getItem('edcalendar_school_name') || 'โรงเรียนสุมเส้าพิทยาคาร');
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -34,17 +40,9 @@ export default function TimetablePrintView({
   const lunchPeriod = periods.find(p => p.isLunch) || { label: 'พักเที่ยง', startTime: '12:00', endTime: '13:00' };
 
   const handlePrint = () => {
-    // Save preferences
     localStorage.setItem('edcalendar_teacher_name', teacherName);
     localStorage.setItem('edcalendar_school_name', schoolName);
-    saveStoredSignatures(signatures);
     window.print();
-  };
-
-  const handleSignatureChange = (index, field, value) => {
-    const updated = [...signatures];
-    updated[index] = { ...updated[index], [field]: value };
-    setSignatures(updated);
   };
 
   return (
@@ -119,29 +117,6 @@ export default function TimetablePrintView({
                 className="w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white font-medium"
               />
             </div>
-          </div>
-
-          {/* Signature editors */}
-          <div className="pt-2 border-t border-slate-200 dark:border-slate-700 grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {signatures.map((sig, idx) => (
-              <div key={idx} className="space-y-1">
-                <span className="font-semibold text-slate-500">ผู้ลงนามที่ {idx + 1}:</span>
-                <input
-                  type="text"
-                  value={sig.name}
-                  onChange={(e) => handleSignatureChange(idx, 'name', e.target.value)}
-                  placeholder="ชื่อ-นามสกุล"
-                  className="w-full px-2.5 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md text-xs text-slate-900 dark:text-white"
-                />
-                <input
-                  type="text"
-                  value={sig.title}
-                  onChange={(e) => handleSignatureChange(idx, 'title', e.target.value)}
-                  placeholder="ตำแหน่ง"
-                  className="w-full px-2.5 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md text-[11px] text-slate-600 dark:text-slate-300"
-                />
-              </div>
-            ))}
           </div>
         </div>
 

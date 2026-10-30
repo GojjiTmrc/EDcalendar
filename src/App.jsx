@@ -7,17 +7,20 @@ import TeachingCalendar from './components/Calendar/TeachingCalendar';
 import TeachingSummary from './components/Summary/TeachingSummary';
 import SubjectManagerModal from './components/Subjects/SubjectManagerModal';
 import SemesterModal from './components/Semesters/SemesterModal';
-import BackupModal from './components/Backup/BackupModal';
+import AccountModal from './components/Account/AccountModal';
+import SettingsModal, { getStoredDefaultTab } from './components/Settings/SettingsModal';
 import ShortNoteModal from './components/ShortNotes/ShortNoteModal';
 import DueAlertBanner from './components/ShortNotes/DueAlertBanner';
 import AuthScreen from './components/Auth/AuthScreen';
 import { Loader2, GraduationCap, Plus } from 'lucide-react';
 import { getActiveSession, subscribeAuthChanges, signOut } from './services/supabaseClient';
+import { getStoredPeriods } from './utils/periodConfig';
 
 import {
   loadData,
   saveData,
   loadCloudData,
+  saveCloudDataImmediate,
   debouncedSaveCloudData,
   subscribeRealtimeCloudData,
   resetData,
@@ -35,7 +38,9 @@ export default function App() {
   // State from Storage / Cloud
   const [data, setData] = useState(() => loadData());
   const [theme, setTheme] = useState(() => loadTheme());
-  const [activeTab, setActiveTab] = useState('timetable'); // 'timetable' | 'calendar'
+  const [defaultTab, setDefaultTab] = useState(() => getStoredDefaultTab());
+  const [activeTab, setActiveTab] = useState(() => getStoredDefaultTab()); // 'timetable' | 'calendar' | 'summary'
+  const [periods, setPeriods] = useState(() => getStoredPeriods());
 
   // Modals state
   const [isSlotModalOpen, setIsSlotModalOpen] = useState(false);
@@ -46,7 +51,8 @@ export default function App() {
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [isSubjectModalOpen, setIsSubjectModalOpen] = useState(false);
   const [isSemesterModalOpen, setIsSemesterModalOpen] = useState(false);
-  const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
+  const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
 
   // Short Notes & Notifications state
   const [isShortNoteModalOpen, setIsShortNoteModalOpen] = useState(false);
@@ -330,6 +336,19 @@ export default function App() {
     updateData(res);
   };
 
+  const handleForceSyncCloud = async () => {
+    if (!user) return;
+    setSyncStatus('saving');
+    try {
+      await saveCloudDataImmediate(user.id, data);
+      const latest = await loadCloudData(user.id);
+      setData(latest);
+      setSyncStatus('saved');
+    } catch {
+      setSyncStatus('error');
+    }
+  };
+
   // ------------------ Short Notes Handlers ------------------
   const handleOpenAddShortNote = (date = '', subjectId = '') => {
     setEditingShortNote(null);
@@ -428,13 +447,10 @@ export default function App() {
         setActiveTab={setActiveTab}
         semesters={data.semesters || []}
         activeSemesterId={data.activeSemesterId}
-        setActiveSemesterId={handleSelectSemester}
-        theme={theme}
-        setTheme={setTheme}
         onOpenSubjects={() => setIsSubjectModalOpen(true)}
         onOpenSemesters={() => setIsSemesterModalOpen(true)}
-        onOpenBackup={() => setIsBackupModalOpen(true)}
-        onPrintTimetable={() => setIsPrintModalOpen(true)}
+        onOpenAccount={() => setIsAccountModalOpen(true)}
+        onOpenSettings={() => setIsSettingsModalOpen(true)}
         shortNotes={data.shortNotes || []}
         overrides={data.overrides || []}
         subjects={data.subjects || []}
@@ -490,6 +506,7 @@ export default function App() {
                 slots={data.slots}
                 subjects={data.subjects}
                 activeSemester={activeSemester}
+                periods={periods}
                 onAddSlot={handleOpenAddSlot}
                 onEditSlot={handleOpenEditSlot}
                 onPrint={() => setIsPrintModalOpen(true)}
@@ -598,12 +615,29 @@ export default function App() {
         onDeleteSemester={handleDeleteSemester}
       />
 
-      <BackupModal
-        isOpen={isBackupModalOpen}
-        onClose={() => setIsBackupModalOpen(false)}
+      <AccountModal
+        isOpen={isAccountModalOpen}
+        onClose={() => setIsAccountModalOpen(false)}
+        user={user}
+        allData={data}
+        onUserUpdated={(updatedUser) => setUser(updatedUser)}
+      />
+
+      <SettingsModal
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
+        theme={theme}
+        setTheme={setTheme}
+        defaultTab={defaultTab}
+        onChangeDefaultTab={(nextTab) => setDefaultTab(nextTab)}
+        periods={periods}
+        onSavePeriods={(nextPeriods) => setPeriods(nextPeriods)}
         allData={data}
         onDataImported={handleDataImported}
         onResetData={handleResetData}
+        onForceSyncCloud={handleForceSyncCloud}
+        syncStatus={syncStatus}
+        user={user}
       />
 
       <ShortNoteModal
