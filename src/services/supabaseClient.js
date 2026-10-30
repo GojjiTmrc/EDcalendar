@@ -216,13 +216,6 @@ const DEFAULT_ACCOUNTS = [
     name: 'ครูกิตติพงษ์ (Gojji)',
     createdAt: '2026-10-19T00:00:00.000Z',
   },
-  {
-    id: 'user-godgittipong127',
-    email: 'godgiitpong127@gmail.com',
-    password: 'Godtmrc000',
-    name: 'ครูกิตติพงษ์ (Gojji)',
-    createdAt: '2026-10-19T00:00:00.000Z',
-  },
 ];
 
 const localAuthListeners = new Set();
@@ -246,7 +239,7 @@ export function getLocalAccounts() {
     DEFAULT_ACCOUNTS.forEach((acc) => map.set(acc.email.toLowerCase(), acc));
     if (Array.isArray(stored)) {
       stored.forEach((acc) => {
-        if (acc && acc.email) {
+        if (acc && acc.email && acc.email.toLowerCase() !== 'godgiitpong127@gmail.com') {
           map.set(acc.email.toLowerCase(), acc);
         }
       });
@@ -427,9 +420,7 @@ export async function signUpWithEmail(email, password) {
     throw new Error('กรุณากรอกอีเมลและรหัสผ่านให้ครบถ้วน');
   }
 
-  // Alias godgiitpong127@gmail.com and godgittipong127@gmail.com to the same user ID
-  const isGojjiAlias =
-    cleanEmail === 'godgittipong127@gmail.com' || cleanEmail === 'godgiitpong127@gmail.com';
+  const isGojjiAlias = cleanEmail === 'godgittipong127@gmail.com';
 
   const accounts = getLocalAccounts();
   const existingIdx = accounts.findIndex((acc) => acc.email.toLowerCase() === cleanEmail);
