@@ -13,6 +13,11 @@ import {
   User,
   UserCog,
   Settings,
+  Timer,
+  Hourglass,
+  Maximize2,
+  MapPin,
+  ArrowRight,
 } from 'lucide-react';
 import NotificationDropdown from './ShortNotes/NotificationDropdown';
 import { toDateString } from '../utils/dateUtils';
@@ -40,9 +45,27 @@ export default function Navbar({
   onSignOut,
   syncStatus = 'saved',
   isDemoMode = false,
+  clockState = null,
+  onOpenFullscreenClock,
 }) {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [isClockPopoverOpen, setIsClockPopoverOpen] = useState(false);
   const closeMenuTimeoutRef = useRef(null);
+  const closeClockTimeoutRef = useRef(null);
+
+  const handleClockMouseEnter = () => {
+    if (closeClockTimeoutRef.current) {
+      clearTimeout(closeClockTimeoutRef.current);
+      closeClockTimeoutRef.current = null;
+    }
+    setIsClockPopoverOpen(true);
+  };
+
+  const handleClockMouseLeave = () => {
+    closeClockTimeoutRef.current = setTimeout(() => {
+      setIsClockPopoverOpen(false);
+    }, 180);
+  };
 
   const handleProfileMouseEnter = () => {
     if (closeMenuTimeoutRef.current) {
@@ -159,6 +182,196 @@ export default function Navbar({
 
           {/* Right Action Tools */}
           <div className="flex items-center gap-1.5 sm:gap-2">
+            {/* Compact Real-Time Clock & Period Status Pill */}
+            {clockState && (
+              <div
+                className="relative"
+                onMouseEnter={handleClockMouseEnter}
+                onMouseLeave={handleClockMouseLeave}
+              >
+                <button
+                  type="button"
+                  onClick={() => setIsClockPopoverOpen((prev) => !prev)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium border transition-all cursor-pointer ${
+                    clockState.urgency === 'critical' && clockState.phase === 'in_period'
+                      ? 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-800'
+                      : clockState.urgency === 'warning' && clockState.phase === 'in_period'
+                      ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-800'
+                      : clockState.phase === 'in_period'
+                      ? 'bg-indigo-50/80 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800'
+                      : clockState.phase === 'lunch'
+                      ? 'bg-amber-50/70 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700'
+                  }`}
+                  title="คลิกหรือชี้เมาส์เพื่อดูเวลาคาบเรียนแบบละเอียด"
+                >
+                  <span
+                    className={`w-2 h-2 rounded-full shrink-0 ${
+                      clockState.urgency === 'critical' && clockState.phase === 'in_period'
+                        ? 'bg-rose-500 animate-ping'
+                        : clockState.phase === 'in_period'
+                        ? 'bg-emerald-500 animate-pulse'
+                        : clockState.phase === 'lunch'
+                        ? 'bg-amber-500'
+                        : 'bg-slate-400'
+                    }`}
+                  />
+                  <span className="font-mono font-bold tabular-nums tracking-tight text-xs">
+                    {clockState.clockHMS}
+                  </span>
+
+                  {/* Period + Remaining summary on larger screens */}
+                  {(clockState.phase === 'in_period' || clockState.phase === 'lunch') && (
+                    <span className="hidden lg:inline-flex items-center gap-1 pl-1.5 border-l border-current/20 text-[11px] font-semibold tabular-nums">
+                      <span>
+                        {clockState.phase === 'lunch'
+                          ? 'พักเที่ยง'
+                          : `คาบ ${clockState.currentPeriod?.label}`}
+                      </span>
+                      <span className="opacity-75">•</span>
+                      <span className="font-mono">
+                        เหลือ {clockState.remaining.digital}
+                      </span>
+                    </span>
+                  )}
+                </button>
+
+                {/* Popover Detailed Card */}
+                {isClockPopoverOpen && (
+                  <div className="fixed sm:absolute right-2 sm:right-0 left-2 sm:left-auto mt-2 sm:w-80 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-4 z-50 space-y-3 text-xs animate-in fade-in slide-in-from-top-1 duration-150">
+                    {/* Header: Time & Date */}
+                    <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
+                      <div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                          {clockState.thaiDateFull}
+                        </div>
+                        <div className="text-2xl font-black font-mono tabular-nums text-slate-900 dark:text-white mt-0.5">
+                          {clockState.clockHMS}{' '}
+                          <span className="text-xs font-semibold text-slate-400">น.</span>
+                        </div>
+                      </div>
+                      <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                        {clockState.phase === 'in_period'
+                          ? `คาบที่ ${clockState.currentPeriod?.label}`
+                          : clockState.phase === 'lunch'
+                          ? 'พักเที่ยง'
+                          : clockState.phase === 'before_school'
+                          ? 'ก่อนเข้าเรียน'
+                          : 'นอกเวลาเรียน'}
+                      </span>
+                    </div>
+
+                    {/* Sub 1 & Sub 2 Breakdown */}
+                    {(clockState.phase === 'in_period' ||
+                      clockState.phase === 'lunch' ||
+                      clockState.phase === 'between_periods') ? (
+                      <div className="space-y-2">
+                        {/* ย่อยที่ 1: เริ่มคาบไปแล้ว */}
+                        <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700 flex items-center justify-between">
+                          <span className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300 font-medium">
+                            <Timer className="w-3.5 h-3.5 text-indigo-500" />
+                            <span>เริ่มคาบไปแล้ว:</span>
+                          </span>
+                          <span className="font-bold text-indigo-600 dark:text-indigo-400 tabular-nums">
+                            {clockState.elapsed.minutes} นาที {String(clockState.elapsed.seconds).padStart(2, '0')} วินาที
+                          </span>
+                        </div>
+
+                        {/* ย่อยที่ 2: เหลืออีกกี่นาที กี่วินาที */}
+                        <div className="p-2.5 rounded-xl bg-emerald-50/50 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800/70 space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="flex items-center gap-1.5 text-slate-700 dark:text-slate-200 font-medium">
+                              <Hourglass className="w-3.5 h-3.5 text-emerald-500" />
+                              <span>เหลือเวลาอีก:</span>
+                            </span>
+                            <span className="font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
+                              {clockState.remaining.minutes} นาที {String(clockState.remaining.seconds).padStart(2, '0')} วินาที
+                            </span>
+                          </div>
+                          <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-gradient-to-r from-indigo-500 to-emerald-500 rounded-full transition-all duration-500"
+                              style={{ width: `${Math.min(100, Math.max(2, clockState.progressPercent))}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ) : clockState.phase === 'before_school' ? (
+                      <div className="p-2.5 rounded-xl bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 text-sky-800 dark:text-sky-300">
+                        อีก <strong>{clockState.remaining.minutes} นาที {String(clockState.remaining.seconds).padStart(2, '0')} วินาที</strong> จะเริ่มคาบที่ 1 ({clockState.nextPeriod?.startTime} น.)
+                      </div>
+                    ) : (
+                      <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+                        ขณะนี้อยู่นอกเวลาคาบเรียนประจำวัน
+                      </div>
+                    )}
+
+                    {/* Current Teaching Subject */}
+                    {clockState.currentSlotInfo && (
+                      <div className="p-2.5 rounded-xl bg-indigo-50/60 dark:bg-indigo-950/40 border border-indigo-200/80 dark:border-indigo-800/70 space-y-1">
+                        <div className="text-[10px] font-bold uppercase text-indigo-600 dark:text-indigo-400">
+                          กำลังสอนวิชานี้
+                        </div>
+                        <div className="font-bold text-slate-900 dark:text-white truncate">
+                          {clockState.currentSlotInfo.subject.code} {clockState.currentSlotInfo.subject.name}
+                        </div>
+                        <div className="text-[11px] text-slate-600 dark:text-slate-300 flex items-center gap-2">
+                          <span>{clockState.currentSlotInfo.subject.gradeGroup || '-'}</span>
+                          <span>•</span>
+                          <span className="flex items-center gap-0.5">
+                            <MapPin className="w-3 h-3 text-slate-400" />
+                            ห้อง {clockState.currentSlotInfo.room}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Next Teaching Subject */}
+                    {clockState.nextTeachingSlotInfo && (
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800">
+                        <span className="flex items-center gap-1 font-medium">
+                          <ArrowRight className="w-3 h-3 text-indigo-500" />
+                          ถัดไป คาบ {clockState.nextTeachingSlotInfo.startPeriod} ({clockState.nextTeachingSlotInfo.periodObj.startTime}):
+                        </span>
+                        <span className="font-semibold text-slate-700 dark:text-slate-200 truncate max-w-[140px]">
+                          {clockState.nextTeachingSlotInfo.subject.code} (ห้อง {clockState.nextTeachingSlotInfo.room})
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Action Buttons */}
+                    <div className="pt-1.5 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2">
+                      {activeTab !== 'timetable' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsClockPopoverOpen(false);
+                            setActiveTab('timetable');
+                          }}
+                          className="flex-1 py-1.5 px-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-[11px] transition-colors"
+                        >
+                          ดูในตารางสอน
+                        </button>
+                      )}
+                      {onOpenFullscreenClock && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsClockPopoverOpen(false);
+                            onOpenFullscreenClock();
+                          }}
+                          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-[11px] transition-colors"
+                        >
+                          <Maximize2 className="w-3 h-3" />
+                          <span>ขยายนาฬิกาเต็มจอ</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             <button
               onClick={onOpenSubjects}
               title="จัดการรายชื่อวิชา"

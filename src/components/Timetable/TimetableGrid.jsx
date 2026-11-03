@@ -19,6 +19,7 @@ import {
   getStoredPeriods,
   getSlotPeriodMapping,
 } from '../../utils/periodConfig';
+import LivePeriodTracker from './LivePeriodTracker';
 
 export default function TimetableGrid({
   slots = [],
@@ -28,6 +29,9 @@ export default function TimetableGrid({
   onAddSlot,
   onEditSlot,
   onPrint,
+  clockState = null,
+  isFullscreenClockOpen = false,
+  setIsFullscreenClockOpen,
 }) {
   const periods = propPeriods || getStoredPeriods();
   const [selectedSubjectFilter, setSelectedSubjectFilter] = useState('all');
@@ -154,6 +158,16 @@ export default function TimetableGrid({
         </div>
       </div>
 
+      {/* Real-Time Clock & Smart Period Tracker */}
+      {clockState && (
+        <LivePeriodTracker
+          clockState={clockState}
+          onEditSlot={onEditSlot}
+          isFullscreenOpen={isFullscreenClockOpen}
+          setIsFullscreenOpen={setIsFullscreenClockOpen}
+        />
+      )}
+
       {/* Summary KPI Cards (Responsive 2x2 on mobile, 4 columns on lg) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
         <div className="bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-2.5 sm:gap-3">
@@ -251,11 +265,25 @@ export default function TimetableGrid({
 
             for (const p of periods) {
               if (p.isLunch) {
+                const isLiveLunch =
+                  clockState?.thaiDayIndex === selectedDay && clockState?.phase === 'lunch';
                 timelineItems.push(
-                  <div key="lunch" className="p-3 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-800/60 flex items-center justify-between text-xs text-amber-800 dark:text-amber-300">
+                  <div
+                    key="lunch"
+                    className={`p-3 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border flex items-center justify-between text-xs text-amber-800 dark:text-amber-300 ${
+                      isLiveLunch
+                        ? 'border-amber-500 ring-2 ring-amber-500/30 shadow-sm'
+                        : 'border-amber-200/80 dark:border-amber-800/60'
+                    }`}
+                  >
                     <div className="flex items-center gap-2 font-medium">
-                      <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                      <span className={`w-2 h-2 rounded-full bg-amber-500 ${isLiveLunch ? 'animate-ping' : ''}`}></span>
                       <span>พักรับประทานอาหารกลางวัน</span>
+                      {isLiveLunch && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-white">
+                          กำลังพัก • เหลือ {clockState.remaining.digital}
+                        </span>
+                      )}
                     </div>
                     <span className="text-[11px] font-mono text-amber-700 dark:text-amber-400">{p.startTime} - {p.endTime}</span>
                   </div>
@@ -270,6 +298,12 @@ export default function TimetableGrid({
               if (slotInfo) {
                 const { slot, span } = slotInfo;
                 skipUntil = pNum + span;
+                const isLiveCard =
+                  clockState?.thaiDayIndex === selectedDay &&
+                  clockState?.phase === 'in_period' &&
+                  clockState?.currentPeriodNum >= pNum &&
+                  clockState?.currentPeriodNum < pNum + span;
+
                 const subject = subjectMap.get(slot.subjectId) || {
                   code: '???',
                   name: 'ไม่พบวิชา',
@@ -284,16 +318,24 @@ export default function TimetableGrid({
                   <div
                     key={pNum}
                     onClick={() => onEditSlot(slot)}
-                    className={`p-3.5 rounded-2xl border transition-all cursor-pointer shadow-xs active:scale-[0.99] ${color.bg} ${color.border}`}
+                    className={`p-3.5 rounded-2xl border transition-all cursor-pointer shadow-xs active:scale-[0.99] ${color.bg} ${color.border} ${
+                      isLiveCard ? 'ring-2 ring-indigo-500 dark:ring-indigo-400 shadow-md' : ''
+                    }`}
                   >
                     <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs font-bold px-2 py-0.5 rounded-lg bg-white/80 dark:bg-slate-900/80 text-slate-800 dark:text-slate-200 border border-slate-200/50 dark:border-slate-700/50">
                           คาบ {span > 1 ? `${pNum} - ${pNum + span - 1}` : pNum}
                         </span>
                         <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
                           {slot.startTime} - {slot.endTime}
                         </span>
+                        {isLiveCard && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-600 text-white">
+                            <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                            <span>LIVE • เหลือ {clockState.remaining.digital}</span>
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-1.5">
                         {span > 1 && (
@@ -328,19 +370,27 @@ export default function TimetableGrid({
                 // Empty period or activity
                 const isPeriod7 = pNum === 7;
                 const defaultActivity = isPeriod7 ? DEFAULT_ACTIVITIES[selectedDay] : null;
+                const isLiveEmpty =
+                  clockState?.thaiDayIndex === selectedDay &&
+                  clockState?.phase === 'in_period' &&
+                  clockState?.currentPeriodNum === pNum;
 
                 if (defaultActivity) {
                   timelineItems.push(
                     <div
                       key={pNum}
                       onClick={() => onAddSlot(selectedDay, pNum)}
-                      className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-dashed border-slate-300 dark:border-slate-700 flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 cursor-pointer hover:bg-slate-100"
+                      className={`p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-dashed flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 cursor-pointer hover:bg-slate-100 ${
+                        isLiveEmpty
+                          ? 'border-indigo-500 ring-2 ring-indigo-500/20'
+                          : 'border-slate-300 dark:border-slate-700'
+                      }`}
                     >
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
                           คาบ {pNum}
                         </span>
-                        <span>{defaultActivity.title} ({p.startTime} - {p.endTime})</span>
+                        <span>{typeof defaultActivity === 'object' ? defaultActivity.title : defaultActivity} ({p.startTime} - {p.endTime})</span>
                       </div>
                       <Plus className="w-3.5 h-3.5 text-slate-400" />
                     </div>
@@ -350,12 +400,18 @@ export default function TimetableGrid({
                     <div
                       key={pNum}
                       onClick={() => onAddSlot(selectedDay, pNum)}
-                      className="py-2.5 px-3 rounded-xl border border-dashed border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-700 flex items-center justify-between text-xs text-slate-400 hover:text-indigo-600 transition-colors cursor-pointer group"
+                      className={`py-2.5 px-3 rounded-xl border border-dashed hover:border-indigo-300 dark:hover:border-indigo-700 flex items-center justify-between text-xs text-slate-400 hover:text-indigo-600 transition-colors cursor-pointer group ${
+                        isLiveEmpty
+                          ? 'border-indigo-500 bg-indigo-50/40 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-300'
+                          : 'border-slate-200 dark:border-slate-800'
+                      }`}
                     >
                       <div className="flex items-center gap-2">
                         <span className="text-[11px] text-slate-400">คาบ {pNum}</span>
                         <span className="text-[10px] font-mono text-slate-400">{p.startTime} - {p.endTime}</span>
-                        <span className="text-[11px] text-slate-400 group-hover:text-indigo-600">ว่าง (แตะเพื่อเพิ่ม)</span>
+                        <span className="text-[11px] group-hover:text-indigo-600">
+                          {isLiveEmpty ? `กำลังอยู่ในคาบว่าง (เหลือ ${clockState.remaining.digital})` : 'ว่าง (แตะเพื่อเพิ่ม)'}
+                        </span>
                       </div>
                       <Plus className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600" />
                     </div>
@@ -394,38 +450,83 @@ export default function TimetableGrid({
                 </th>
 
                 {/* Morning Periods: 1 - 4 */}
-                {teachingPeriods.slice(0, 4).map((p) => (
-                  <th key={p.period} className="border-r border-slate-300 dark:border-slate-700 p-2 text-center font-bold min-w-[100px]">
-                    <div className="text-sm font-bold text-indigo-700 dark:text-indigo-400">{p.label}</div>
-                    <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">
-                      {p.startTime} - {p.endTime}
-                    </div>
-                  </th>
-                ))}
+                {teachingPeriods.slice(0, 4).map((p) => {
+                  const isLiveCol =
+                    clockState?.phase === 'in_period' && clockState?.currentPeriodNum === p.period;
+                  return (
+                    <th
+                      key={p.period}
+                      className={`border-r border-slate-300 dark:border-slate-700 p-2 text-center font-bold min-w-[100px] transition-colors ${
+                        isLiveCol
+                          ? 'bg-indigo-100/90 dark:bg-indigo-950/80 ring-2 ring-inset ring-indigo-500'
+                          : ''
+                      }`}
+                    >
+                      <div className="flex items-center justify-center gap-1">
+                        <span className="text-sm font-bold text-indigo-700 dark:text-indigo-400">{p.label}</span>
+                        {isLiveCol && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500 text-white">
+                            ● LIVE
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+                        {p.startTime} - {p.endTime}
+                      </div>
+                    </th>
+                  );
+                })}
 
                 {/* Lunch Break Column Header */}
-                <th className="border-r border-slate-300 dark:border-slate-700 p-2 text-center font-bold w-16 bg-amber-50/80 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300">
+                <th
+                  className={`border-r border-slate-300 dark:border-slate-700 p-2 text-center font-bold w-16 bg-amber-50/80 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 ${
+                    clockState?.phase === 'lunch' ? 'ring-2 ring-inset ring-amber-500' : ''
+                  }`}
+                >
                   <div className="text-xs font-bold">พักเที่ยง</div>
+                  {clockState?.phase === 'lunch' && (
+                    <div className="text-[9px] font-bold text-amber-600 dark:text-amber-300">● LIVE</div>
+                  )}
                   <div className="text-[10px] opacity-80 font-normal">
                     {lunchPeriod.startTime}-{lunchPeriod.endTime}
                   </div>
                 </th>
 
                 {/* Afternoon Periods: 5 - 8 */}
-                {teachingPeriods.slice(4, 8).map((p) => (
-                  <th key={p.period} className="border-r border-slate-300 dark:border-slate-700 p-2 text-center font-bold min-w-[100px] last:border-r-0">
-                    <div className="text-sm font-bold text-indigo-700 dark:text-indigo-400">{p.label}</div>
-                    <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">
-                      {p.startTime} - {p.endTime}
-                    </div>
-                  </th>
-                ))}
+                {teachingPeriods.slice(4, 8).map((p) => {
+                  const isLiveCol =
+                    clockState?.phase === 'in_period' && clockState?.currentPeriodNum === p.period;
+                  return (
+                    <th
+                      key={p.period}
+                      className={`border-r border-slate-300 dark:border-slate-700 p-2 text-center font-bold min-w-[100px] last:border-r-0 transition-colors ${
+                        isLiveCol
+                          ? 'bg-indigo-100/90 dark:bg-indigo-950/80 ring-2 ring-inset ring-indigo-500'
+                          : ''
+                      }`}
+                    >
+                      <div className="flex items-center justify-center gap-1">
+                        <span className="text-sm font-bold text-indigo-700 dark:text-indigo-400">{p.label}</span>
+                        {isLiveCol && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500 text-white">
+                            ● LIVE
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+                        {p.startTime} - {p.endTime}
+                      </div>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
 
             {/* Body: Monday to Friday */}
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
               {displayDays.map((day) => {
+                const isTodayRow = clockState?.thaiDayIndex === day.index;
+
                 // Day slots
                 const daySlots = filteredSlots
                   .filter(s => s.dayOfWeek === day.index)
@@ -469,6 +570,12 @@ export default function TimetableGrid({
                       const validSpan = Math.min(span, maxSpanInSlice);
                       skipUntil = pNum + validSpan;
 
+                      const isLiveCell =
+                        isTodayRow &&
+                        clockState?.phase === 'in_period' &&
+                        clockState?.currentPeriodNum >= pNum &&
+                        clockState?.currentPeriodNum < pNum + validSpan;
+
                       const subject = subjectMap.get(slot.subjectId) || {
                         code: '???',
                         name: 'ไม่พบวิชา',
@@ -484,21 +591,34 @@ export default function TimetableGrid({
                           key={pNum}
                           colSpan={validSpan}
                           onClick={() => onEditSlot(slot)}
-                          className="border-r border-slate-300 dark:border-slate-700 p-1.5 align-middle cursor-pointer transition-all hover:brightness-95 group"
+                          className={`border-r border-slate-300 dark:border-slate-700 p-1.5 align-middle cursor-pointer transition-all hover:brightness-95 group ${
+                            isLiveCell ? 'bg-indigo-50/40 dark:bg-indigo-950/30' : ''
+                          }`}
                         >
-                          <div className={`h-full min-h-[90px] p-2.5 rounded-xl border flex flex-col justify-between transition-all group-hover:shadow-md ${color.bg} ${color.border}`}>
+                          <div
+                            className={`h-full min-h-[90px] p-2.5 rounded-xl border flex flex-col justify-between transition-all group-hover:shadow-md ${color.bg} ${color.border} ${
+                              isLiveCell ? 'ring-2 ring-indigo-600 dark:ring-indigo-400 shadow-md' : ''
+                            }`}
+                          >
                             {/* Line 1: Code & Span Badge */}
                             <div className="flex items-center justify-between gap-1">
                               <span className="font-bold text-xs text-slate-900 dark:text-white truncate">
                                 {subject.code}
                               </span>
-                              {validSpan > 1 ? (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-indigo-600 text-white shrink-0 shadow-xs">
-                                  {validSpan} คาบ
-                                </span>
-                              ) : (
-                                <Edit3 className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-                              )}
+                              <div className="flex items-center gap-1 shrink-0">
+                                {isLiveCell && (
+                                  <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold bg-emerald-600 text-white animate-pulse">
+                                    เหลือ {clockState.remaining.digital}
+                                  </span>
+                                )}
+                                {validSpan > 1 ? (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-indigo-600 text-white shrink-0 shadow-xs">
+                                    {validSpan} คาบ
+                                  </span>
+                                ) : (
+                                  <Edit3 className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                                )}
+                              </div>
                             </div>
 
                             {/* Line 2: Subject Name */}
@@ -523,6 +643,10 @@ export default function TimetableGrid({
                       // Empty Period or Default Activity (e.g. Period 7)
                       const isPeriod7 = pNum === 7;
                       const defaultActivity = isPeriod7 ? DEFAULT_ACTIVITIES[day.index] : null;
+                      const isLiveEmptyCell =
+                        isTodayRow &&
+                        clockState?.phase === 'in_period' &&
+                        clockState?.currentPeriodNum === pNum;
 
                       cells.push(
                         <td
@@ -531,9 +655,15 @@ export default function TimetableGrid({
                           onClick={() => onAddSlot(day.index, pNum)}
                           className={`border-r border-slate-300 dark:border-slate-700 p-1.5 align-middle cursor-pointer transition-all hover:bg-slate-50 dark:hover:bg-slate-800/60 group ${
                             isPeriod7 ? 'bg-slate-50/50 dark:bg-slate-900/40' : ''
-                          }`}
+                          } ${isLiveEmptyCell ? 'bg-indigo-50/40 dark:bg-indigo-950/30' : ''}`}
                         >
-                          <div className="h-full min-h-[90px] rounded-xl border border-dashed border-slate-200 dark:border-slate-800 p-2 flex flex-col items-center justify-center text-center transition-colors group-hover:border-indigo-400 dark:group-hover:border-indigo-600 group-hover:bg-indigo-50/20">
+                          <div
+                            className={`h-full min-h-[90px] rounded-xl border border-dashed p-2 flex flex-col items-center justify-center text-center transition-colors group-hover:border-indigo-400 dark:group-hover:border-indigo-600 group-hover:bg-indigo-50/20 ${
+                              isLiveEmptyCell
+                                ? 'border-indigo-500 ring-2 ring-indigo-500/20'
+                                : 'border-slate-200 dark:border-slate-800'
+                            }`}
+                          >
                             {defaultActivity ? (
                               <div className="space-y-1">
                                 <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
@@ -542,13 +672,26 @@ export default function TimetableGrid({
                                 <div className="text-[10px] text-slate-400 font-medium">
                                   กิจกรรมพัฒนาผู้เรียน
                                 </div>
+                                {isLiveEmptyCell && (
+                                  <div className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400">
+                                    ● เหลือ {clockState.remaining.digital}
+                                  </div>
+                                )}
                               </div>
                             ) : (
                               <div className="text-slate-300 dark:text-slate-600 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 flex flex-col items-center gap-1 transition-colors">
-                                <Plus className="w-4 h-4" />
-                                <span className="text-[10px] font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-                                  เพิ่มคาบ {pNum}
-                                </span>
+                                {isLiveEmptyCell ? (
+                                  <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
+                                    คาบว่างปัจจุบัน ({clockState.remaining.digital})
+                                  </span>
+                                ) : (
+                                  <>
+                                    <Plus className="w-4 h-4" />
+                                    <span className="text-[10px] font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                                      เพิ่มคาบ {pNum}
+                                    </span>
+                                  </>
+                                )}
                               </div>
                             )}
                           </div>
@@ -563,10 +706,23 @@ export default function TimetableGrid({
                 return (
                   <tr key={day.index} className="hover:bg-slate-50/40 dark:hover:bg-slate-800/20 transition-colors">
                     {/* Left Column: Day Label + 4 Sublabels */}
-                    <td className="border-r border-slate-300 dark:border-slate-700 p-2.5 font-bold text-center bg-slate-50 dark:bg-slate-800/70 align-middle sticky left-0 z-10 shadow-xs">
+                    <td
+                      className={`border-r border-slate-300 dark:border-slate-700 p-2.5 font-bold text-center align-middle sticky left-0 z-10 shadow-xs ${
+                        isTodayRow
+                          ? 'bg-indigo-50/90 dark:bg-indigo-950/60'
+                          : 'bg-slate-50 dark:bg-slate-800/70'
+                      }`}
+                    >
                       <div className="flex items-center justify-between gap-1.5">
-                        <div className="text-sm font-bold text-slate-900 dark:text-white">
-                          {day.full}
+                        <div className="text-left">
+                          <div className="text-sm font-bold text-slate-900 dark:text-white">
+                            {day.full}
+                          </div>
+                          {isTodayRow && (
+                            <span className="inline-block mt-0.5 px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-indigo-600 text-white">
+                              วันนี้
+                            </span>
+                          )}
                         </div>
                         <div className="text-[10px] text-slate-400 dark:text-slate-500 font-normal leading-tight text-right space-y-0.5">
                           <div>รหัส</div>

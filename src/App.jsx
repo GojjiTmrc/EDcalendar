@@ -15,6 +15,7 @@ import AuthScreen from './components/Auth/AuthScreen';
 import { Loader2, GraduationCap, Plus } from 'lucide-react';
 import { getActiveSession, subscribeAuthChanges, signOut } from './services/supabaseClient';
 import { getStoredPeriods } from './utils/periodConfig';
+import { useRealtimePeriodClock } from './utils/periodClockUtils';
 
 import {
   loadData,
@@ -53,6 +54,7 @@ export default function App() {
   const [isSemesterModalOpen, setIsSemesterModalOpen] = useState(false);
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isFullscreenClockOpen, setIsFullscreenClockOpen] = useState(false);
 
   // Short Notes & Notifications state
   const [isShortNoteModalOpen, setIsShortNoteModalOpen] = useState(false);
@@ -170,6 +172,16 @@ export default function App() {
 
   // Active semester
   const activeSemester = (data.semesters || []).find(s => s.id === data.activeSemesterId) || (data.semesters || [])[0];
+
+  // Real-time period clock & tracker state
+  const clockState = useRealtimePeriodClock({
+    periods,
+    slots: data.slots || [],
+    subjects: data.subjects || [],
+    activeSemester,
+    overrides: data.overrides || [],
+    multiDayEvents: data.multiDayEvents || [],
+  });
 
   // ------------------ Timetable Slot Handlers ------------------
   const handleOpenAddSlot = (dayOfWeek = 1, periodNumber = 1) => {
@@ -465,6 +477,11 @@ export default function App() {
         onSignOut={handleSignOut}
         syncStatus={syncStatus}
         isDemoMode={isDemoMode}
+        clockState={clockState}
+        onOpenFullscreenClock={() => {
+          setActiveTab('timetable');
+          setIsFullscreenClockOpen(true);
+        }}
       />
 
       {/* Due & Prep Alert Banner */}
@@ -510,6 +527,9 @@ export default function App() {
                 onAddSlot={handleOpenAddSlot}
                 onEditSlot={handleOpenEditSlot}
                 onPrint={() => setIsPrintModalOpen(true)}
+                clockState={clockState}
+                isFullscreenClockOpen={isFullscreenClockOpen}
+                setIsFullscreenClockOpen={setIsFullscreenClockOpen}
               />
             )}
             
