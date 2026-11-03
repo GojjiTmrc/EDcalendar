@@ -331,8 +331,7 @@ export function computeLivePeriodState({
 }
 
 /**
- * Custom React Hook that ticks every second (1000ms) and supports optional time simulation offset
- * so the user can test any period anytime.
+ * Custom React Hook that ticks every second (1000ms) using real local time.
  */
 export function useRealtimePeriodClock({
   periods,
@@ -342,10 +341,6 @@ export function useRealtimePeriodClock({
   overrides,
   multiDayEvents,
 }) {
-  // Optional time offset in seconds for testing/simulation (0 = real local time)
-  const [simulatedOffsetSec, setSimulatedOffsetSec] = useState(0);
-  // Optional simulated day of week override (null = real day)
-  const [simulatedDayIndex, setSimulatedDayIndex] = useState(null);
   const [tickNow, setTickNow] = useState(() => new Date());
 
   useEffect(() => {
@@ -355,36 +350,8 @@ export function useRealtimePeriodClock({
     return () => clearInterval(interval);
   }, []);
 
-  // Compute effective Date
-  const effectiveNow = new Date(tickNow.getTime() + simulatedOffsetSec * 1000);
-  if (simulatedDayIndex !== null) {
-    const currentThaiDay = jsDayToThaiDay(effectiveNow.getDay());
-    const dayDiff = simulatedDayIndex - currentThaiDay;
-    effectiveNow.setDate(effectiveNow.getDate() + dayDiff);
-  }
-
-  const jumpToSimulatedTime = (timeStr, targetDay = null) => {
-    const realNow = new Date();
-    const realSec = dateToSeconds(realNow);
-    const targetSec = timeStrToSeconds(timeStr);
-    setSimulatedOffsetSec(targetSec - realSec);
-    if (targetDay !== null) {
-      setSimulatedDayIndex(targetDay);
-    } else if (jsDayToThaiDay(realNow.getDay()) >= 6) {
-      // If today is weekend, default simulation to Monday so timetable slots show up
-      setSimulatedDayIndex(1);
-    }
-  };
-
-  const resetToRealTime = () => {
-    setSimulatedOffsetSec(0);
-    setSimulatedDayIndex(null);
-  };
-
-  const isSimulated = simulatedOffsetSec !== 0 || simulatedDayIndex !== null;
-
-  const state = computeLivePeriodState({
-    now: effectiveNow,
+  return computeLivePeriodState({
+    now: tickNow,
     periods,
     slots,
     subjects,
@@ -392,13 +359,4 @@ export function useRealtimePeriodClock({
     overrides,
     multiDayEvents,
   });
-
-  return {
-    ...state,
-    isSimulated,
-    simulatedDayIndex,
-    jumpToSimulatedTime,
-    resetToRealTime,
-    setSimulatedDayIndex,
-  };
 }
