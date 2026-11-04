@@ -28,6 +28,7 @@ import {
 import { exportBackupJSON, importBackupJSON } from '../../services/storage';
 
 export const DEFAULT_TAB_STORAGE_KEY = 'edcalendar_default_tab';
+export const CONFIRM_TEACHING_STORAGE_KEY = 'edcalendar_confirm_teaching_mode';
 
 export function getStoredDefaultTab() {
   try {
@@ -41,6 +42,22 @@ export function getStoredDefaultTab() {
   return 'timetable';
 }
 
+export function getStoredConfirmTeachingMode() {
+  try {
+    return localStorage.getItem(CONFIRM_TEACHING_STORAGE_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+export function saveStoredConfirmTeachingMode(enabled) {
+  try {
+    localStorage.setItem(CONFIRM_TEACHING_STORAGE_KEY, String(Boolean(enabled)));
+  } catch {
+    // Ignore storage error
+  }
+}
+
 export default function SettingsModal({
   isOpen,
   onClose,
@@ -48,6 +65,8 @@ export default function SettingsModal({
   setTheme,
   defaultTab,
   onChangeDefaultTab,
+  confirmTeachingMode,
+  onChangeConfirmTeachingMode,
   periods,
   onSavePeriods,
   allData = {},
@@ -61,6 +80,9 @@ export default function SettingsModal({
   const [periodList, setPeriodList] = useState(() => periods || getStoredPeriods());
   const [signatures, setSignatures] = useState(() => getStoredSignatures());
   const [selectedDefaultTab, setSelectedDefaultTab] = useState(() => defaultTab || getStoredDefaultTab());
+  const [isConfirmModeEnabled, setIsConfirmModeEnabled] = useState(() =>
+    confirmTeachingMode !== undefined ? confirmTeachingMode : getStoredConfirmTeachingMode()
+  );
   const [statusBanner, setStatusBanner] = useState(null); // { success: boolean, message: string }
   const [isSyncingNow, setIsSyncingNow] = useState(false);
   const fileInputRef = useRef(null);
@@ -70,9 +92,12 @@ export default function SettingsModal({
       setPeriodList(periods || getStoredPeriods());
       setSignatures(getStoredSignatures());
       setSelectedDefaultTab(defaultTab || getStoredDefaultTab());
+      setIsConfirmModeEnabled(
+        confirmTeachingMode !== undefined ? confirmTeachingMode : getStoredConfirmTeachingMode()
+      );
       setStatusBanner(null);
     }
-  }, [isOpen, periods, defaultTab]);
+  }, [isOpen, periods, defaultTab, confirmTeachingMode]);
 
   if (!isOpen) return null;
 
@@ -107,12 +132,24 @@ export default function SettingsModal({
     }
   };
 
+  const handleToggleConfirmTeachingMode = (nextValue) => {
+    setIsConfirmModeEnabled(nextValue);
+    saveStoredConfirmTeachingMode(nextValue);
+    if (onChangeConfirmTeachingMode) {
+      onChangeConfirmTeachingMode(nextValue);
+    }
+  };
+
   const handleSaveSettings = (e) => {
     e.preventDefault();
     saveStoredPeriods(periodList);
     saveStoredSignatures(signatures);
+    saveStoredConfirmTeachingMode(isConfirmModeEnabled);
     if (onSavePeriods) {
       onSavePeriods(periodList);
+    }
+    if (onChangeConfirmTeachingMode) {
+      onChangeConfirmTeachingMode(isConfirmModeEnabled);
     }
     setStatusBanner({
       success: true,
@@ -350,6 +387,72 @@ export default function SettingsModal({
                       {item.label}
                     </button>
                   ))}
+                </div>
+              </div>
+
+              {/* Teaching Confirmation System Toggle */}
+              <div className="space-y-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <label className="block font-bold text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                      3. ระบบคอนเฟิร์มการสอน (Teaching Confirmation System)
+                    </label>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      เมื่อเปิดใช้งาน ช่อง <span className="font-semibold text-emerald-600 dark:text-emerald-400">&quot;สัปดาห์ที่สอนจริง (คอนเฟิร์ม)&quot;</span> ในหน้าสรุปผลการสอนจะนับเฉพาะสัปดาห์ที่มีการกดบันทึกหลังการสอนเรียบร้อยแล้วเท่านั้น
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={isConfirmModeEnabled}
+                    onClick={() => handleToggleConfirmTeachingMode(!isConfirmModeEnabled)}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      isConfirmModeEnabled
+                        ? 'bg-emerald-600'
+                        : 'bg-slate-300 dark:bg-slate-700'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        isConfirmModeEnabled ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => handleToggleConfirmTeachingMode(false)}
+                    className={`p-3 rounded-xl border text-xs text-left transition-all ${
+                      !isConfirmModeEnabled
+                        ? 'bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-indigo-950/60 dark:border-indigo-400 dark:text-indigo-300 font-semibold ring-2 ring-indigo-500/20'
+                        : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <div className="font-bold">ปิดโหมดคอนเฟิร์ม (ค่าเริ่มต้น)</div>
+                    <div className="text-[11px] opacity-80 mt-0.5 font-normal">
+                      แสดง &quot;สัปดาห์ที่สอนจริง&quot; โดยคำนวณตามตารางปกติและวันงดสอน
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleToggleConfirmTeachingMode(true)}
+                    className={`p-3 rounded-xl border text-xs text-left transition-all ${
+                      isConfirmModeEnabled
+                        ? 'bg-emerald-50 border-emerald-500 text-emerald-700 dark:bg-emerald-950/60 dark:border-emerald-400 dark:text-emerald-300 font-semibold ring-2 ring-emerald-500/20'
+                        : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <div className="font-bold flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                      <span>เปิดระบบคอนเฟิร์มการสอน</span>
+                    </div>
+                    <div className="text-[11px] opacity-80 mt-0.5 font-normal">
+                      แสดง &quot;สัปดาห์ที่สอนจริง (คอนเฟิร์ม)&quot; นับจากคาบที่บันทึกหลังการสอนแล้ว
+                    </div>
+                  </button>
                 </div>
               </div>
             </div>

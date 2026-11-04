@@ -15,10 +15,12 @@ import {
   Package,
   ListChecks,
   BookCheck,
-  Sparkles
+  Sparkles,
+  Sun
 } from 'lucide-react';
 import { formatThaiDate } from '../../utils/dateUtils';
 import { SESSION_STATUS, getColorById } from '../../utils/colors';
+import { useScreenWakeLock } from '../../utils/wakeLockUtils';
 
 const QUICK_POST_LOG_PHRASES = [
   'นักเรียนเข้าใจเนื้อหาและให้ความร่วมมือในกิจกรรมดีมาก',
@@ -60,6 +62,20 @@ export default function SessionDetailModal({
   const [startTime, setStartTime] = useState('08:30');
   const [endTime, setEndTime] = useState('10:10');
   const [customRoom, setCustomRoom] = useState('');
+  const [modalWakeEnabled, setModalWakeEnabled] = useState(false);
+
+  // Release wake lock automatically when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setModalWakeEnabled(false);
+    }
+  }, [isOpen]);
+
+  useScreenWakeLock({
+    enabled: Boolean(isOpen && modalWakeEnabled),
+    onChangeEnabled: setModalWakeEnabled,
+    autoReleaseAfterSchool: false,
+  });
 
   useEffect(() => {
     setActiveModalTab(initialTab === 'postLog' ? 'postLog' : 'plan');
@@ -198,12 +214,61 @@ export default function SessionDetailModal({
     }
   };
 
+  const handleQuickConfirmTeaching = () => {
+    const defaultConfirmText = postTeachingLog.trim() || '- จัดการเรียนการสอนเรียบร้อยครบถ้วนตามแผนการสอน';
+    const nowIso = new Date().toISOString();
+
+    if (isCustom) {
+      if (!customSubjectId) {
+        alert('กรุณาเลือกวิชา');
+        return;
+      }
+      onSaveOverride({
+        id: session?.id || `custom-sess-${Date.now()}`,
+        semesterId: semesterId,
+        date: activeDate,
+        subjectId: customSubjectId,
+        isCustomSession: true,
+        startTime,
+        endTime,
+        room: customRoom || selectedSubject?.defaultRoom || '-',
+        status: status === 'cancelled' || status === 'activity' ? 'normal' : status,
+        reason: reason.trim(),
+        topic: topic.trim(),
+        lessonPlan: lessonPlan.trim(),
+        prepChecklist: prepChecklist,
+        notes: notes.trim(),
+        postTeachingLog: defaultConfirmText,
+        postTeachingLogUpdatedAt: nowIso,
+      });
+      onClose();
+      return;
+    }
+
+    onSaveOverride({
+      id: session.id.startsWith('ovr-') ? session.id : `ovr-${Date.now()}`,
+      semesterId: session.semesterId || semesterId,
+      date: session.date,
+      slotId: session.slotId,
+      subjectId: session.subjectId,
+      status: status === 'cancelled' || status === 'activity' ? 'normal' : status,
+      reason: reason.trim(),
+      topic: topic.trim(),
+      lessonPlan: lessonPlan.trim(),
+      prepChecklist: prepChecklist,
+      notes: notes.trim(),
+      postTeachingLog: defaultConfirmText,
+      postTeachingLogUpdatedAt: nowIso,
+    });
+    onClose();
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-150">
       <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[90vh]">
         
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800">
+        <div className="flex items-center justify-between gap-2 px-6 py-4 border-b border-slate-100 dark:border-slate-800">
           <div>
             <div className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">
               {formatThaiDate(activeDate, 'withDay')}
@@ -216,12 +281,27 @@ export default function SessionDetailModal({
                 : 'บันทึกกิจกรรมหรือคาบนอกตาราง'}
             </h3>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setModalWakeEnabled((prev) => !prev)}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+                modalWakeEnabled
+                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                  : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+              }`}
+              title="เปิดหน้าจอค้างไว้ขณะดูแผนการสอนหรือเช็กลิสต์สื่อหน้าห้องเรียน"
+            >
+              <Sun className={`w-3.5 h-3.5 ${modalWakeEnabled ? 'text-amber-200' : 'text-amber-500'}`} />
+              <span>{modalWakeEnabled ? 'จอค้าง: เปิด' : 'จอค้างขณะสอน'}</span>
+            </button>
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Content */}
@@ -366,10 +446,19 @@ export default function SessionDetailModal({
                       บันทึกหลังการสอนประจำคาบเรียน
                     </h4>
                     <p className="text-[11px] text-slate-600 dark:text-slate-400">
-                      บันทึกผลการจัดการเรียนรู้ ปัญหา/อุปสรรค หรือข้อเสนอแนะสำหรับคาบนี้ (แสดงผลในหน้าต่างดูบันทึกหลังการสอนด้านล่างปฏิทิน)
+                      บันทึกผลการจัดการเรียนรู้ ปัญหา/อุปสรรค หรือข้อเสนอแนะสำหรับคาบนี้ (ใช้คำนวณสัปดาห์ที่คอนเฟิร์มการสอน)
                     </p>
                   </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={handleQuickConfirmTeaching}
+                  className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-all"
+                  title="บันทึกและคอนเฟิร์มการสอนทันทีด้วยข้อความมาตรฐาน"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>คอนเฟิร์มด่วน</span>
+                </button>
               </div>
 
               {/* Topic taught in this period */}

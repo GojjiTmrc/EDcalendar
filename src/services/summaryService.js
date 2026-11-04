@@ -131,10 +131,16 @@ export function calculateTeachingSummary(
       activityCount: 0,
       makeupCount: 0,
       completedCount: 0,
+      confirmedCount: 0,
+      confirmedSessionsCount: 0,
+      taughtSessionsCount: 0,
+      pendingConfirmCount: 0,
       taughtMinutes: 0,
+      confirmedMinutes: 0,
       plannedMinutes: 0,
       plannedWeeksSet: new Set(),
       taughtWeeksSet: new Set(),
+      confirmedWeeksSet: new Set(),
     };
   }
 
@@ -144,12 +150,17 @@ export function calculateTeachingSummary(
   let totalActivityCount = 0;
   let totalMakeupCount = 0;
   let totalCompletedCount = 0;
+  let totalConfirmedCount = 0;
+  let totalConfirmedSessionsCount = 0;
   let totalTaughtMinutes = 0;
+  let totalConfirmedMinutes = 0;
   let totalPlannedMinutes = 0;
   const allPlannedWeeksSet = new Set();
   const allTaughtWeeksSet = new Set();
+  const allConfirmedWeeksSet = new Set();
 
   const historyLogs = [];
+  const pendingConfirmLogs = [];
 
   // Iterate school days (Mon-Fri) in [rangeStart, rangeEnd]
   const curDate = parseDateString(rangeStart);
@@ -198,15 +209,22 @@ export function calculateTeachingSummary(
             activityCount: 0,
             makeupCount: 0,
             completedCount: 0,
+            confirmedCount: 0,
+            confirmedSessionsCount: 0,
+            taughtSessionsCount: 0,
+            pendingConfirmCount: 0,
             taughtMinutes: 0,
+            confirmedMinutes: 0,
             plannedMinutes: 0,
             plannedWeeksSet: new Set(),
             taughtWeeksSet: new Set(),
+            confirmedWeeksSet: new Set(),
           };
         }
 
         const stat = subjectStats[subId];
         const periodWeight = Number(sess.periods) || 1;
+        const hasPostTeachingLog = Boolean(sess.postTeachingLog && String(sess.postTeachingLog).trim() !== '');
 
         if (!sess.isCustomSession) {
           stat.plannedCount += periodWeight;
@@ -220,6 +238,43 @@ export function calculateTeachingSummary(
         if (sess.status === 'normal' || sess.status === 'makeup') {
           stat.taughtWeeksSet.add(weekKey);
           allTaughtWeeksSet.add(weekKey);
+          stat.taughtSessionsCount += 1;
+
+          if (hasPostTeachingLog) {
+            stat.confirmedWeeksSet.add(weekKey);
+            allConfirmedWeeksSet.add(weekKey);
+            stat.confirmedCount += periodWeight;
+            stat.confirmedSessionsCount += 1;
+            stat.confirmedMinutes += duration;
+            totalConfirmedCount += periodWeight;
+            totalConfirmedSessionsCount += 1;
+            totalConfirmedMinutes += duration;
+          } else if (dateStr <= todayStr) {
+            stat.pendingConfirmCount += 1;
+            pendingConfirmLogs.push({
+              id: sess.id,
+              date: dateStr,
+              slotId: sess.slotId,
+              semesterId: sess.semesterId || semester.id,
+              subjectId: sess.subjectId,
+              subjectCode: sess.subjectCode,
+              subjectName: sess.subjectName,
+              gradeGroup: sess.gradeGroup,
+              room: sess.room,
+              startTime: sess.startTime,
+              endTime: sess.endTime,
+              periods: periodWeight,
+              time: `${sess.startTime} - ${sess.endTime}`,
+              status: sess.status,
+              statusLabel: sess.status === 'makeup' ? 'สอนชดเชย' : 'สอนปกติ',
+              reason: sess.reason || '',
+              topic: sess.topic || '',
+              lessonPlan: sess.lessonPlan || '',
+              prepChecklist: sess.prepChecklist || [],
+              notes: sess.notes || '',
+              isCustomSession: Boolean(sess.isCustomSession),
+            });
+          }
         }
 
         if (sess.status === 'normal') {
@@ -302,23 +357,47 @@ export function calculateTeachingSummary(
     ? Math.min(100, Math.round((totalCompletedCount / totalPlannedCount) * 100))
     : 0;
 
+  const totalPlannedWeeksCount = allPlannedWeeksSet.size;
+  const totalConfirmedWeeksCount = allConfirmedWeeksSet.size;
+  const overallConfirmedCompletionRate = totalPlannedWeeksCount > 0
+    ? Math.min(100, Math.round((totalConfirmedWeeksCount / totalPlannedWeeksCount) * 100))
+    : totalPlannedCount > 0
+    ? Math.min(100, Math.round((totalConfirmedCount / totalPlannedCount) * 100))
+    : 0;
+
   const subjectBreakdown = Object.values(subjectStats).map(s => {
+    const plannedWeeksCount = s.plannedWeeksSet ? s.plannedWeeksSet.size : 0;
+    const taughtWeeksCount = s.taughtWeeksSet ? s.taughtWeeksSet.size : 0;
+    const confirmedWeeksCount = s.confirmedWeeksSet ? s.confirmedWeeksSet.size : 0;
+
     const rate = s.plannedCount > 0
       ? Math.min(100, Math.round((s.completedCount / s.plannedCount) * 100))
       : 0;
+
+    const confirmedRate = plannedWeeksCount > 0
+      ? Math.min(100, Math.round((confirmedWeeksCount / plannedWeeksCount) * 100))
+      : s.plannedCount > 0
+      ? Math.min(100, Math.round((s.confirmedCount / s.plannedCount) * 100))
+      : (confirmedWeeksCount > 0 ? 100 : 0);
+
     return {
       ...s,
-      plannedWeeksCount: s.plannedWeeksSet ? s.plannedWeeksSet.size : 0,
-      taughtWeeksCount: s.taughtWeeksSet ? s.taughtWeeksSet.size : 0,
+      plannedWeeksCount,
+      taughtWeeksCount,
+      confirmedWeeksCount,
       completionRate: rate,
+      confirmedCompletionRate: confirmedRate,
       taughtDurationText: formatDurationThai(s.taughtMinutes),
       taughtDurationShort: formatDurationShortThai(s.taughtMinutes),
+      confirmedDurationText: formatDurationThai(s.confirmedMinutes),
+      confirmedDurationShort: formatDurationShortThai(s.confirmedMinutes),
       plannedDurationText: formatDurationThai(s.plannedMinutes),
     };
   }).sort((a, b) => b.plannedCount - a.plannedCount);
 
-  // Sort history logs descending by date
+  // Sort history logs and pending confirm logs descending by date
   historyLogs.sort((a, b) => b.date.localeCompare(a.date));
+  pendingConfirmLogs.sort((a, b) => b.date.localeCompare(a.date));
 
   return {
     scopeType,
@@ -326,19 +405,27 @@ export function calculateTeachingSummary(
     rangeEnd,
     totalPlannedCount,
     totalCompletedCount,
+    totalConfirmedCount,
+    totalConfirmedSessionsCount,
     totalNormalCount,
     totalCancelledCount,
     totalActivityCount,
     totalMakeupCount,
     totalTaughtMinutes,
+    totalConfirmedMinutes,
     totalPlannedMinutes,
-    totalPlannedWeeks: allPlannedWeeksSet.size,
+    totalPlannedWeeks: totalPlannedWeeksCount,
     totalTaughtWeeks: allTaughtWeeksSet.size,
+    totalConfirmedWeeks: totalConfirmedWeeksCount,
     overallCompletionRate,
+    overallConfirmedCompletionRate,
     taughtDurationText: formatDurationThai(totalTaughtMinutes),
     taughtDurationShort: formatDurationShortThai(totalTaughtMinutes),
+    confirmedDurationText: formatDurationThai(totalConfirmedMinutes),
+    confirmedDurationShort: formatDurationShortThai(totalConfirmedMinutes),
     plannedDurationText: formatDurationThai(totalPlannedMinutes),
     subjectBreakdown,
     historyLogs,
+    pendingConfirmLogs,
   };
 }

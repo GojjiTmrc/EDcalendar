@@ -8,7 +8,11 @@ import TeachingSummary from './components/Summary/TeachingSummary';
 import SubjectManagerModal from './components/Subjects/SubjectManagerModal';
 import SemesterModal from './components/Semesters/SemesterModal';
 import AccountModal from './components/Account/AccountModal';
-import SettingsModal, { getStoredDefaultTab } from './components/Settings/SettingsModal';
+import SettingsModal, {
+  getStoredDefaultTab,
+  getStoredConfirmTeachingMode,
+  saveStoredConfirmTeachingMode,
+} from './components/Settings/SettingsModal';
 import ShortNoteModal from './components/ShortNotes/ShortNoteModal';
 import DueAlertBanner from './components/ShortNotes/DueAlertBanner';
 import AuthScreen from './components/Auth/AuthScreen';
@@ -41,7 +45,14 @@ export default function App() {
   const [theme, setTheme] = useState(() => loadTheme());
   const [defaultTab, setDefaultTab] = useState(() => getStoredDefaultTab());
   const [activeTab, setActiveTab] = useState(() => getStoredDefaultTab()); // 'timetable' | 'calendar' | 'summary'
+  const [confirmTeachingMode, setConfirmTeachingMode] = useState(() => getStoredConfirmTeachingMode());
   const [periods, setPeriods] = useState(() => getStoredPeriods());
+
+  const handleChangeConfirmTeachingMode = (nextVal) => {
+    const enabled = Boolean(nextVal);
+    setConfirmTeachingMode(enabled);
+    saveStoredConfirmTeachingMode(enabled);
+  };
 
   // Modals state
   const [isSlotModalOpen, setIsSlotModalOpen] = useState(false);
@@ -481,6 +492,13 @@ export default function App() {
         onOpenFullscreenClock={() => {
           setActiveTab('timetable');
           setIsFullscreenClockOpen(true);
+          try {
+            if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+              document.documentElement.requestFullscreen().catch(() => {});
+            }
+          } catch {
+            // Ignore fullscreen error
+          }
         }}
       />
 
@@ -559,6 +577,9 @@ export default function App() {
                 subjects={data.subjects}
                 overrides={data.overrides}
                 multiDayEvents={data.multiDayEvents || []}
+                confirmTeachingMode={confirmTeachingMode}
+                onChangeConfirmTeachingMode={handleChangeConfirmTeachingMode}
+                onSaveOverride={handleSaveOverride}
               />
             )}
           </>
@@ -650,6 +671,8 @@ export default function App() {
         setTheme={setTheme}
         defaultTab={defaultTab}
         onChangeDefaultTab={(nextTab) => setDefaultTab(nextTab)}
+        confirmTeachingMode={confirmTeachingMode}
+        onChangeConfirmTeachingMode={handleChangeConfirmTeachingMode}
         periods={periods}
         onSavePeriods={(nextPeriods) => setPeriods(nextPeriods)}
         allData={data}

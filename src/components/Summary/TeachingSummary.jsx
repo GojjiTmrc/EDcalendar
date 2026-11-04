@@ -11,7 +11,9 @@ import {
   TrendingUp,
   Filter,
   Search,
-  ChevronDown
+  ChevronDown,
+  BookCheck,
+  Check
 } from 'lucide-react';
 import { calculateTeachingSummary, getTermScopeInfo } from '../../services/summaryService';
 import SummaryPrintView from './SummaryPrintView';
@@ -24,8 +26,13 @@ export default function TeachingSummary({
   subjects = [],
   overrides = [],
   multiDayEvents = [],
+  confirmTeachingMode = false,
+  onChangeConfirmTeachingMode,
+  onSaveOverride,
 }) {
   const [scopeType, setScopeType] = useState('semester'); // 'semester' | 'todate' | 'month'
+  const [pendingSubjectFilter, setPendingSubjectFilter] = useState('all');
+  const [isPendingExpanded, setIsPendingExpanded] = useState(false);
   
   // Available months in semester for monthly filter
   const semesterMonths = useMemo(() => {
@@ -99,6 +106,70 @@ export default function TeachingSummary({
     }
     return true;
   });
+
+  // Filter pending confirmation logs (past/today sessions without postTeachingLog)
+  const pendingLogs = summary.pendingConfirmLogs || [];
+  const filteredPendingLogs = pendingLogs.filter((item) => {
+    if (pendingSubjectFilter !== 'all' && item.subjectId !== pendingSubjectFilter) return false;
+    return true;
+  });
+
+  const handleQuickConfirmSession = (sess) => {
+    if (!onSaveOverride) return;
+    const nowIso = new Date().toISOString();
+    const defaultConfirmText = '- จัดการเรียนการสอนเรียบร้อยครบถ้วนตามแผนการสอน';
+
+    if (sess.isCustomSession) {
+      onSaveOverride({
+        id: sess.id,
+        semesterId: sess.semesterId || semester?.id,
+        date: sess.date,
+        subjectId: sess.subjectId,
+        isCustomSession: true,
+        startTime: sess.startTime,
+        endTime: sess.endTime,
+        room: sess.room || '-',
+        status: sess.status || 'makeup',
+        reason: sess.reason || '',
+        topic: sess.topic || '',
+        lessonPlan: sess.lessonPlan || '',
+        prepChecklist: sess.prepChecklist || [],
+        notes: sess.notes || '',
+        postTeachingLog: defaultConfirmText,
+        postTeachingLogUpdatedAt: nowIso,
+      });
+    } else {
+      onSaveOverride({
+        id: sess.id && sess.id.startsWith('ovr-') ? sess.id : `ovr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        semesterId: sess.semesterId || semester?.id,
+        date: sess.date,
+        slotId: sess.slotId,
+        subjectId: sess.subjectId,
+        status: sess.status || 'normal',
+        reason: sess.reason || '',
+        topic: sess.topic || '',
+        lessonPlan: sess.lessonPlan || '',
+        prepChecklist: sess.prepChecklist || [],
+        notes: sess.notes || '',
+        postTeachingLog: defaultConfirmText,
+        postTeachingLogUpdatedAt: nowIso,
+      });
+    }
+  };
+
+  const handleQuickConfirmAllFiltered = () => {
+    if (!onSaveOverride || filteredPendingLogs.length === 0) return;
+    if (!confirm(`ยืนยันการบันทึกหลังการสอนด่วนสำหรับ ${filteredPendingLogs.length} คาบเรียนที่แสดงอยู่ใช่หรือไม่?`)) {
+      return;
+    }
+    filteredPendingLogs.forEach((sess) => {
+      handleQuickConfirmSession(sess);
+    });
+  };
+
+  const activeOverallCompletionRate = confirmTeachingMode
+    ? summary.overallConfirmedCompletionRate
+    : summary.overallCompletionRate;
 
   return (
     <div className="space-y-6">
@@ -203,13 +274,19 @@ export default function TeachingSummary({
         {/* Taught / Completed */}
         <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between text-emerald-600 dark:text-emerald-400 mb-2">
-            <span className="text-xs font-semibold">สอนสำเร็จ</span>
+            <span className="text-xs font-semibold">
+              {confirmTeachingMode ? 'สัปดาห์ที่คอนเฟิร์ม' : 'สอนสำเร็จ'}
+            </span>
             <CheckCircle2 className="w-4 h-4" />
           </div>
           <div>
-            <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{summary.totalCompletedCount}</div>
+            <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+              {confirmTeachingMode ? summary.totalConfirmedWeeks : summary.totalCompletedCount}
+            </div>
             <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-              สอนจริง {summary.totalTaughtWeeks} สัปดาห์
+              {confirmTeachingMode
+                ? `บันทึกหลังสอนแล้ว ${summary.totalConfirmedCount} คาบ`
+                : `สอนจริง ${summary.totalTaughtWeeks} สัปดาห์`}
             </div>
           </div>
         </div>
@@ -255,15 +332,17 @@ export default function TeachingSummary({
         {/* Completion Rate */}
         <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between text-indigo-600 dark:text-indigo-400 mb-2">
-            <span className="text-xs font-semibold">ความสำเร็จ</span>
+            <span className="text-xs font-semibold">
+              {confirmTeachingMode ? 'ความสำเร็จ (คอนเฟิร์ม)' : 'ความสำเร็จ'}
+            </span>
             <TrendingUp className="w-4 h-4" />
           </div>
           <div>
-            <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">{summary.overallCompletionRate}%</div>
+            <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">{activeOverallCompletionRate}%</div>
             <div className="w-full bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full mt-1.5 overflow-hidden">
               <div
                 className="bg-indigo-600 h-full rounded-full transition-all duration-500"
-                style={{ width: `${summary.overallCompletionRate}%` }}
+                style={{ width: `${activeOverallCompletionRate}%` }}
               ></div>
             </div>
           </div>
@@ -273,15 +352,46 @@ export default function TeachingSummary({
 
       {/* Subject Breakdown Table Section */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <h3 className="font-bold text-base text-slate-900 dark:text-white">
-              สรุปผลการสอนแยกตามรายวิชา ({summary.subjectBreakdown.length} วิชาในภาคเรียนนี้)
-            </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              แสดงเฉพาะวิชาที่ตั้งค่าเป็นวิชาในภาคเรียนนี้ หรือวิชาที่เรียนทั้ง 2 เทอม
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="font-bold text-base text-slate-900 dark:text-white">
+                สรุปผลการสอนแยกตามรายวิชา ({summary.subjectBreakdown.length} วิชาในภาคเรียนนี้)
+              </h3>
+              {confirmTeachingMode && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                  <BookCheck className="w-3 h-3" />
+                  <span>โหมดคอนเฟิร์มการสอน</span>
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              {confirmTeachingMode
+                ? 'กำลังนับสัปดาห์ที่สอนจริงจากคาบที่มีการบันทึกหลังการสอนเรียบร้อยแล้ว'
+                : 'แสดงเฉพาะวิชาที่ตั้งค่าเป็นวิชาในภาคเรียนนี้ หรือวิชาที่เรียนทั้ง 2 เทอม'}
             </p>
           </div>
+
+          {/* Quick Toggle for Teaching Confirmation Mode (Synced with Settings) */}
+          {onChangeConfirmTeachingMode && (
+            <button
+              type="button"
+              onClick={() => onChangeConfirmTeachingMode(!confirmTeachingMode)}
+              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold border transition-all shrink-0 ${
+                confirmTeachingMode
+                  ? 'bg-emerald-50 border-emerald-300 text-emerald-800 dark:bg-emerald-950/60 dark:border-emerald-700 dark:text-emerald-300 shadow-xs'
+                  : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300'
+              }`}
+              title="สามารถตั้งค่าเปิด/ปิดถาวรได้ที่เมนู ตั้งค่าระบบ > การแสดงผล & ทั่วไป"
+            >
+              <span
+                className={`w-2.5 h-2.5 rounded-full ${
+                  confirmTeachingMode ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
+                }`}
+              />
+              <span>ระบบคอนเฟิร์มการสอน: {confirmTeachingMode ? 'เปิด' : 'ปิด'}</span>
+            </button>
+          )}
         </div>
 
         <div className="overflow-x-auto">
@@ -293,11 +403,16 @@ export default function TeachingSummary({
                 <th className="py-3 px-3 font-semibold text-center whitespace-nowrap" title="จำนวนสัปดาห์ที่ต้องสอนตามแผน">
                   สัปดาห์ที่ต้องสอน
                 </th>
-                <th className="py-3 px-3 font-semibold text-center whitespace-nowrap text-emerald-600 dark:text-emerald-400" title="จำนวนสัปดาห์ที่มีการจัดกิจกรรมการเรียนการสอนจริง">
-                  สัปดาห์ที่สอนจริง
+                <th
+                  className="py-3 px-3 font-semibold text-center whitespace-nowrap text-emerald-600 dark:text-emerald-400"
+                  title={
+                    confirmTeachingMode
+                      ? 'จำนวนสัปดาห์ที่มีการกดบันทึกหลังการสอนเรียบร้อยแล้ว'
+                      : 'จำนวนสัปดาห์ที่มีการจัดกิจกรรมการเรียนการสอนจริง'
+                  }
+                >
+                  {confirmTeachingMode ? 'สัปดาห์ที่สอนจริง (คอนเฟิร์ม)' : 'สัปดาห์ที่สอนจริง'}
                 </th>
-                <th className="py-3 px-3 font-semibold text-center">ตามแผน</th>
-                <th className="py-3 px-3 font-semibold text-center text-emerald-600 dark:text-emerald-400">สอนจริง</th>
                 <th className="py-3 px-3 font-semibold text-center text-rose-600 dark:text-rose-400">งดสอน</th>
                 <th className="py-3 px-3 font-semibold text-center text-amber-600 dark:text-amber-400">กิจกรรม</th>
                 <th className="py-3 px-3 font-semibold text-center text-sky-600 dark:text-sky-400">ชดเชย</th>
@@ -308,14 +423,17 @@ export default function TeachingSummary({
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {summary.subjectBreakdown.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="py-10 text-center text-slate-400 dark:text-slate-500">
-                    ไม่มีรายวิชาที่กำหนดไว้สำหรับภาคเรียนนี้ (สามารถตั้งค่าเทอมของแต่ละวิชาได้ที่ปุ่ม "วิชา" ด้านบน)
+                  <td colSpan={9} className="py-10 text-center text-slate-400 dark:text-slate-500">
+                    ไม่มีรายวิชาที่กำหนดไว้สำหรับภาคเรียนนี้ (สามารถตั้งค่าเทอมของแต่ละวิชาได้ที่ปุ่ม &quot;วิชา&quot; ด้านบน)
                   </td>
                 </tr>
               ) : (
                 summary.subjectBreakdown.map((item) => {
                   const color = getColorById(item.subject.colorId);
                   const scopeInfo = getTermScopeInfo(item.subject.termScope);
+                  const rowCompletionRate = confirmTeachingMode
+                    ? item.confirmedCompletionRate
+                    : item.completionRate;
 
                   return (
                     <tr key={item.subject.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors">
@@ -341,14 +459,20 @@ export default function TeachingSummary({
                       <td className="py-3 px-3 text-center font-bold text-slate-800 dark:text-slate-200 whitespace-nowrap">
                         {item.plannedWeeksCount}
                       </td>
-                      <td className="py-3 px-3 text-center font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
-                        {item.taughtWeeksCount}
-                      </td>
-                      <td className="py-3 px-3 text-center font-bold text-slate-800 dark:text-slate-200">
-                        {item.plannedCount}
-                      </td>
-                      <td className="py-3 px-3 text-center font-bold text-emerald-600 dark:text-emerald-400">
-                        {item.completedCount}
+                      <td className="py-3 px-3 text-center whitespace-nowrap">
+                        <div className="font-bold text-sm text-emerald-600 dark:text-emerald-400">
+                          {confirmTeachingMode ? item.confirmedWeeksCount : item.taughtWeeksCount}
+                        </div>
+                        {confirmTeachingMode && (
+                          <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                            บันทึกแล้ว {item.confirmedSessionsCount} ครั้ง
+                            {item.pendingConfirmCount > 0 && (
+                              <span className="ml-1 text-amber-600 dark:text-amber-400 font-semibold">
+                                (รอ {item.pendingConfirmCount})
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </td>
                       <td className="py-3 px-3 text-center font-medium text-rose-600 dark:text-rose-400">
                         {item.cancelledCount > 0 ? item.cancelledCount : '-'}
@@ -367,11 +491,11 @@ export default function TeachingSummary({
                           <div className="flex-1 bg-slate-100 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
                             <div
                               className="bg-indigo-600 h-full rounded-full transition-all duration-500"
-                              style={{ width: `${item.completionRate}%` }}
+                              style={{ width: `${rowCompletionRate}%` }}
                             ></div>
                           </div>
                           <span className="font-bold text-xs text-indigo-600 dark:text-indigo-400 w-10 text-right">
-                            {item.completionRate}%
+                            {rowCompletionRate}%
                           </span>
                         </div>
                       </td>
@@ -383,6 +507,111 @@ export default function TeachingSummary({
           </table>
         </div>
       </div>
+
+      {/* Pending Teaching Confirmation Section (Visible when confirmTeachingMode is ON) */}
+      {confirmTeachingMode && pendingLogs.length > 0 && (
+        <div className="bg-emerald-50/50 dark:bg-emerald-950/20 rounded-2xl border border-emerald-200/80 dark:border-emerald-800/60 shadow-sm overflow-hidden">
+          <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs mt-0.5">
+                <BookCheck className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-sm sm:text-base text-slate-900 dark:text-white flex items-center gap-2">
+                  <span>คาบเรียนที่ผ่านวันสอนมาแล้วแต่ยังไม่ได้คอนเฟิร์ม ({filteredPendingLogs.length} คาบ)</span>
+                </h3>
+                <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
+                  คุณสามารถกดปุ่ม &quot;คอนเฟิร์มด่วน&quot; เพื่อบันทึกหลังการสอนตามแผนและนับเป็นสัปดาห์ที่สอนจริง (คอนเฟิร์ม) ได้ทันที
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={pendingSubjectFilter}
+                onChange={(e) => setPendingSubjectFilter(e.target.value)}
+                className="px-3 py-1.5 text-xs font-medium bg-white dark:bg-slate-800 border border-emerald-200 dark:border-emerald-800 rounded-xl text-slate-700 dark:text-slate-200 focus:outline-none"
+              >
+                <option value="all">ทุกวิชา ({pendingLogs.length} คาบ)</option>
+                {summary.subjectBreakdown
+                  .filter((s) => s.pendingConfirmCount > 0)
+                  .map((s) => (
+                    <option key={s.subject.id} value={s.subject.id}>
+                      {s.subject.code} {s.subject.name} ({s.pendingConfirmCount} คาบ)
+                    </option>
+                  ))}
+              </select>
+
+              {onSaveOverride && filteredPendingLogs.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleQuickConfirmAllFiltered}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-xs transition-all"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>คอนเฟิร์มทั้งหมดที่เลือก ({filteredPendingLogs.length})</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setIsPendingExpanded(!isPendingExpanded)}
+                className="inline-flex items-center gap-1 px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50"
+              >
+                <span>{isPendingExpanded ? 'ซ่อนรายการ' : 'ดูรายการคาบ'}</span>
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isPendingExpanded ? 'rotate-180' : ''}`} />
+              </button>
+            </div>
+          </div>
+
+          {isPendingExpanded && (
+            <div className="border-t border-emerald-200/70 dark:border-emerald-800/60 bg-white dark:bg-slate-900 overflow-x-auto max-h-80 overflow-y-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 sticky top-0">
+                    <th className="py-2.5 px-4 font-semibold w-28">วันที่สอน</th>
+                    <th className="py-2.5 px-4 font-semibold">รายวิชา</th>
+                    <th className="py-2.5 px-3 font-semibold text-center">เวลาเรียน</th>
+                    <th className="py-2.5 px-4 font-semibold text-right">การดำเนินการ</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {filteredPendingLogs.map((sess) => (
+                    <tr key={`${sess.date}-${sess.id}`} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40">
+                      <td className="py-2.5 px-4 font-medium text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                        {formatThaiDate(sess.date, 'short')}
+                      </td>
+                      <td className="py-2.5 px-4">
+                        <div className="font-bold text-slate-900 dark:text-white">
+                          {sess.subjectName}
+                        </div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                          {sess.subjectCode} {sess.gradeGroup ? `• ชั้น ${sess.gradeGroup}` : ''} {sess.room ? `• ห้อง ${sess.room}` : ''}
+                        </div>
+                      </td>
+                      <td className="py-2.5 px-3 text-center text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                        {sess.time} ({sess.periods} คาบ)
+                      </td>
+                      <td className="py-2.5 px-4 text-right">
+                        {onSaveOverride && (
+                          <button
+                            type="button"
+                            onClick={() => handleQuickConfirmSession(sess)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-semibold shadow-2xs transition-colors"
+                          >
+                            <Check className="w-3 h-3" />
+                            <span>คอนเฟิร์มสอนตามแผน</span>
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* History Log Section */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
@@ -524,6 +753,7 @@ export default function TeachingSummary({
         onClose={() => setIsPrintModalOpen(false)}
         summaryData={summary}
         semester={semester}
+        confirmTeachingMode={confirmTeachingMode}
       />
 
     </div>

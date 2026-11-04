@@ -7,6 +7,7 @@ export default function SummaryPrintView({
   onClose,
   summaryData,
   semester,
+  confirmTeachingMode = false,
 }) {
   const [teacherName, setTeacherName] = useState(
     () => localStorage.getItem('edcalendar_teacher_name') || 'นายกิตติพงษ์ โพธิวาระ'
@@ -135,8 +136,12 @@ export default function SummaryPrintView({
                 <tr className="bg-slate-50">
                   <td className="border border-slate-400 p-2 font-semibold w-1/3">สัปดาห์ที่ต้องสอนทั้งหมด</td>
                   <td className="border border-slate-400 p-2 text-center font-bold">{summaryData.totalPlannedWeeks} สัปดาห์</td>
-                  <td className="border border-slate-400 p-2 font-semibold w-1/3">สัปดาห์ที่สอนจริง</td>
-                  <td className="border border-slate-400 p-2 text-center font-bold text-emerald-700">{summaryData.totalTaughtWeeks} สัปดาห์</td>
+                  <td className="border border-slate-400 p-2 font-semibold w-1/3">
+                    {confirmTeachingMode ? 'สัปดาห์ที่สอนจริง (คอนเฟิร์ม)' : 'สัปดาห์ที่สอนจริง'}
+                  </td>
+                  <td className="border border-slate-400 p-2 text-center font-bold text-emerald-700">
+                    {confirmTeachingMode ? summaryData.totalConfirmedWeeks : summaryData.totalTaughtWeeks} สัปดาห์
+                  </td>
                 </tr>
                 <tr>
                   <td className="border border-slate-400 p-2 font-semibold w-1/3">คาบสอนตามแผนทั้งหมด</td>
@@ -147,13 +152,15 @@ export default function SummaryPrintView({
                   </td>
                 </tr>
                 <tr className="bg-slate-50">
-                  <td className="border border-slate-400 p-2 font-semibold">สอนสำเร็จจริง (ปกติ+ชดเชย)</td>
+                  <td className="border border-slate-400 p-2 font-semibold">
+                    {confirmTeachingMode ? 'คาบที่คอนเฟิร์มบันทึกหลังสอนแล้ว' : 'สอนสำเร็จจริง (ปกติ+ชดเชย)'}
+                  </td>
                   <td className="border border-slate-400 p-2 text-center font-bold text-emerald-700">
-                    {summaryData.totalCompletedCount} คาบ
+                    {confirmTeachingMode ? summaryData.totalConfirmedCount : summaryData.totalCompletedCount} คาบ
                   </td>
                   <td className="border border-slate-400 p-2 font-semibold">ร้อยละความสำเร็จ (% Completion)</td>
                   <td className="border border-slate-400 p-2 text-center font-bold text-indigo-700">
-                    {summaryData.overallCompletionRate}%
+                    {confirmTeachingMode ? summaryData.overallConfirmedCompletionRate : summaryData.overallCompletionRate}%
                   </td>
                 </tr>
                 <tr>
@@ -192,9 +199,9 @@ export default function SummaryPrintView({
                   <th className="border border-slate-400 p-2 text-left">ชื่อวิชา</th>
                   <th className="border border-slate-400 p-2 text-center">ชั้นเรียน</th>
                   <th className="border border-slate-400 p-2 text-center whitespace-nowrap">สัปดาห์ที่ต้องสอน</th>
-                  <th className="border border-slate-400 p-2 text-center whitespace-nowrap">สัปดาห์ที่สอนจริง</th>
-                  <th className="border border-slate-400 p-2 text-center">ตามแผน</th>
-                  <th className="border border-slate-400 p-2 text-center">สอนจริง</th>
+                  <th className="border border-slate-400 p-2 text-center whitespace-nowrap">
+                    {confirmTeachingMode ? 'สัปดาห์ที่สอนจริง (คอนเฟิร์ม)' : 'สัปดาห์ที่สอนจริง'}
+                  </th>
                   <th className="border border-slate-400 p-2 text-center">งดสอน</th>
                   <th className="border border-slate-400 p-2 text-center">กิจกรรม</th>
                   <th className="border border-slate-400 p-2 text-center">ชดเชย</th>
@@ -209,14 +216,16 @@ export default function SummaryPrintView({
                     <td className="border border-slate-400 p-2 font-medium">{item.subject.name}</td>
                     <td className="border border-slate-400 p-2 text-center">{item.subject.gradeGroup || '-'}</td>
                     <td className="border border-slate-400 p-2 text-center font-bold">{item.plannedWeeksCount}</td>
-                    <td className="border border-slate-400 p-2 text-center font-bold text-emerald-700">{item.taughtWeeksCount}</td>
-                    <td className="border border-slate-400 p-2 text-center">{item.plannedCount}</td>
-                    <td className="border border-slate-400 p-2 text-center font-bold text-emerald-700">{item.completedCount}</td>
+                    <td className="border border-slate-400 p-2 text-center font-bold text-emerald-700">
+                      {confirmTeachingMode ? item.confirmedWeeksCount : item.taughtWeeksCount}
+                    </td>
                     <td className="border border-slate-400 p-2 text-center text-rose-700">{item.cancelledCount}</td>
                     <td className="border border-slate-400 p-2 text-center text-amber-700">{item.activityCount}</td>
                     <td className="border border-slate-400 p-2 text-center text-sky-700">{item.makeupCount}</td>
                     <td className="border border-slate-400 p-2 text-center font-medium">{item.taughtDurationShort}</td>
-                    <td className="border border-slate-400 p-2 text-center font-bold text-indigo-700">{item.completionRate}%</td>
+                    <td className="border border-slate-400 p-2 text-center font-bold text-indigo-700">
+                      {confirmTeachingMode ? item.confirmedCompletionRate : item.completionRate}%
+                    </td>
                   </tr>
                 ))}
               </tbody>

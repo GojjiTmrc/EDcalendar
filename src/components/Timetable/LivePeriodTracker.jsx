@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Clock,
   Timer,
@@ -12,11 +12,26 @@ import {
   Coffee,
   Sunrise,
   Moon,
+  Sun,
   Sparkles,
   AlertTriangle,
   BellRing,
+  BellOff,
   Layers,
+  Monitor,
+  Eye,
 } from 'lucide-react';
+import {
+  useScreenWakeLock,
+  useBrowserFullscreen,
+  playClassroomChime,
+  getStoredWakeLockPref,
+  saveStoredWakeLockPref,
+  getStoredChimePref,
+  saveStoredChimePref,
+  getStoredDimmerLevel,
+  saveStoredDimmerLevel,
+} from '../../utils/wakeLockUtils';
 
 export default function LivePeriodTracker({
   clockState,
@@ -27,8 +42,112 @@ export default function LivePeriodTracker({
   const [useMultiSpanMode, setUseMultiSpanMode] = useState(false);
   const [internalFullscreen, setInternalFullscreen] = useState(false);
 
+  // Wake Lock states:
+  // 1) Banner-level manual wake lock (for keeping timetable awake on tablet/desk)
+  // 2) Fullscreen classroom clock wake lock (auto-enabled when opening fullscreen based on saved pref)
+  const [bannerWakeEnabled, setBannerWakeEnabled] = useState(false);
+  const [fullscreenWakePref, setFullscreenWakePref] = useState(() => getStoredWakeLockPref());
+  const [fullscreenWakeActive, setFullscreenWakeActive] = useState(false);
+
+  // Classroom Chime & OLED Dimmer states
+  const [chimeEnabled, setChimeEnabled] = useState(() => getStoredChimePref());
+  const [dimmerLevel, setDimmerLevel] = useState(() => getStoredDimmerLevel()); // 'normal' | 'comfort' | 'oled'
+  const [pixelShift, setPixelShift] = useState({ x: 0, y: 0 });
+  const lastChimeKeyRef = useRef('');
+
   const isFullscreen = isFullscreenOpen !== undefined ? isFullscreenOpen : internalFullscreen;
   const setFullscreen = setIsFullscreenOpen || setInternalFullscreen;
+
+  const {
+    isBrowserFullscreen,
+    enterBrowserFullscreen,
+    exitBrowserFullscreen,
+    toggleBrowserFullscreen,
+  } = useBrowserFullscreen();
+
+  // Sync fullscreen wake lock when entering/exiting fullscreen
+  useEffect(() => {
+    if (isFullscreen) {
+      setFullscreenWakeActive(fullscreenWakePref);
+    } else {
+      setFullscreenWakeActive(false);
+    }
+  }, [isFullscreen, fullscreenWakePref]);
+
+  const effectiveWakeEnabled = isFullscreen ? fullscreenWakeActive : bannerWakeEnabled;
+
+  const handleWakeAutoChange = (nextVal) => {
+    if (isFullscreen) {
+      setFullscreenWakeActive(nextVal);
+    } else {
+      setBannerWakeEnabled(nextVal);
+    }
+  };
+
+  const {
+    isAwake,
+    wakeMethod,
+    autoReleasedNotice,
+    clearAutoReleasedNotice,
+  } = useScreenWakeLock({
+    enabled: effectiveWakeEnabled,
+    onChangeEnabled: handleWakeAutoChange,
+    phase: clockState?.phase || null,
+    autoReleaseAfterSchool: true,
+  });
+
+  const handleToggleFullscreenWake = () => {
+    const next = !fullscreenWakeActive;
+    setFullscreenWakeActive(next);
+    setFullscreenWakePref(next);
+    saveStoredWakeLockPref(next);
+    clearAutoReleasedNotice();
+  };
+
+  const handleToggleBannerWake = () => {
+    setBannerWakeEnabled((prev) => !prev);
+    clearAutoReleasedNotice();
+  };
+
+  const handleOpenClassroomFullscreen = () => {
+    setFullscreen(true);
+    enterBrowserFullscreen();
+  };
+
+  const handleCloseClassroomFullscreen = () => {
+    setFullscreen(false);
+    exitBrowserFullscreen();
+  };
+
+  const handleToggleChime = () => {
+    const next = !chimeEnabled;
+    setChimeEnabled(next);
+    saveStoredChimePref(next);
+    if (next) {
+      playClassroomChime('test');
+    }
+  };
+
+  const handleCycleDimmer = () => {
+    const order = ['normal', 'comfort', 'oled'];
+    const next = order[(order.indexOf(dimmerLevel) + 1) % order.length];
+    setDimmerLevel(next);
+    saveStoredDimmerLevel(next);
+  };
+
+  // Subtle pixel-shift every 45 seconds when Fullscreen + Awake is active to prevent OLED/Projector burn-in
+  useEffect(() => {
+    if (!isFullscreen || !effectiveWakeEnabled) {
+      setPixelShift({ x: 0, y: 0 });
+      return;
+    }
+    const interval = setInterval(() => {
+      const rx = Math.floor(Math.random() * 7) - 3; // -3px to +3px
+      const ry = Math.floor(Math.random() * 7) - 3;
+      setPixelShift({ x: rx, y: ry });
+    }, 45000);
+    return () => clearInterval(interval);
+  }, [isFullscreen, effectiveWakeEnabled]);
 
   // Close fullscreen on Escape key
   useEffect(() => {
@@ -41,6 +160,36 @@ export default function LivePeriodTracker({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isFullscreen, setFullscreen]);
+
+  // Trigger 5-minute warning chime and end-of-period chime when chimeEnabled is true
+  useEffect(() => {
+    if (!chimeEnabled || !clockState || clockState.phase !== 'in_period') return;
+
+    const hasSpan = Boolean(clockState.multiSpanTiming && clockState.multiSpanTiming.span > 1);
+    const rem = hasSpan && useMultiSpanMode ? clockState.multiSpanTiming.remaining : clockState.remaining;
+    const pLabel = hasSpan && useMultiSpanMode
+      ? `${clockState.multiSpanTiming.startPeriod}-${clockState.multiSpanTiming.endPeriod}`
+      : String(clockState.currentPeriod?.label || '');
+
+    if (!rem) return;
+
+    // 5 minutes remaining (5m 00s)
+    if (rem.minutes === 5 && rem.seconds === 0) {
+      const key = `warn-${pLabel}-5m`;
+      if (lastChimeKeyRef.current !== key) {
+        lastChimeKeyRef.current = key;
+        playClassroomChime('warning');
+      }
+    }
+    // End of period (0m 01s)
+    if (rem.minutes === 0 && rem.seconds === 1) {
+      const key = `end-${pLabel}-0m`;
+      if (lastChimeKeyRef.current !== key) {
+        lastChimeKeyRef.current = key;
+        playClassroomChime('end');
+      }
+    }
+  }, [chimeEnabled, clockState, useMultiSpanMode]);
 
   if (!clockState) return null;
 
@@ -194,12 +343,41 @@ export default function LivePeriodTracker({
               </button>
             )}
 
+            {/* Keep Screen Awake Button on Main Timetable Banner */}
+            <button
+              type="button"
+              onClick={handleToggleBannerWake}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold border transition-all ${
+                bannerWakeEnabled
+                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                  : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-750'
+              }`}
+              title={
+                bannerWakeEnabled
+                  ? 'กำลังบังคับเปิดหน้าจอค้างไว้ (คลิกเพื่อปิด)'
+                  : 'คลิกเพื่อบังคับเปิดจอค้างไว้ตลอดขณะดูตารางสอน'
+              }
+            >
+              {bannerWakeEnabled ? (
+                <>
+                  <Sun className="w-3.5 h-3.5 text-amber-200 animate-spin" style={{ animationDuration: '10s' }} />
+                  <span>จอค้าง: เปิด</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+                </>
+              ) : (
+                <>
+                  <Sun className="w-3.5 h-3.5 text-amber-500" />
+                  <span className="hidden sm:inline">ล็อกจอค้าง</span>
+                </>
+              )}
+            </button>
+
             {/* Fullscreen Classroom Mode Button */}
             <button
               type="button"
-              onClick={() => setFullscreen(true)}
+              onClick={handleOpenClassroomFullscreen}
               className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-medium bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 transition-colors"
-              title="ขยายนาฬิกาเต็มจอสำหรับเปิดหน้าห้องเรียน"
+              title="ขยายนาฬิกาเต็มจอสำหรับเปิดหน้าห้องเรียน (พร้อมเปิดจอค้างอัตโนมัติ)"
             >
               <Maximize2 className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">เต็มจอหน้าห้องเรียน</span>
@@ -492,35 +670,138 @@ export default function LivePeriodTracker({
 
       {/* FULLSCREEN CLASSROOM MODE OVERLAY */}
       {isFullscreen && (
-        <div className="fixed inset-0 z-50 bg-slate-950 text-white flex flex-col justify-between p-6 sm:p-10 animate-in fade-in duration-200">
+        <div
+          className={`fixed inset-0 z-50 bg-slate-950 text-white flex flex-col justify-between p-5 sm:p-10 animate-in fade-in duration-200 transition-opacity ${
+            dimmerLevel === 'oled'
+              ? 'brightness-50 contrast-95'
+              : dimmerLevel === 'comfort'
+              ? 'brightness-75'
+              : 'brightness-100'
+          }`}
+        >
           {/* Top Bar */}
-          <div className="flex items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className="w-11 h-11 rounded-2xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
                 <Clock className="w-6 h-6 text-white" />
               </div>
               <div>
-                <div className="text-lg font-bold tracking-tight">
-                  ED<span className="text-indigo-400">calendar</span> • นาฬิกาประจำห้องเรียน
+                <div className="text-lg font-bold tracking-tight flex items-center gap-2 flex-wrap">
+                  <span>
+                    ED<span className="text-indigo-400">calendar</span> • นาฬิกาประจำห้องเรียน
+                  </span>
+                  {fullscreenWakeActive && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                      <span>ป้องกันหน้าจอดับทำงานอยู่</span>
+                    </span>
+                  )}
                 </div>
                 <div className="text-sm text-slate-400">{thaiDateFull}</div>
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            {/* Classroom Control Toolbar */}
+            <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
+              {/* 1. Keep Screen Awake Toggle (Primary Feature) */}
+              <button
+                type="button"
+                onClick={handleToggleFullscreenWake}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold border transition-all ${
+                  fullscreenWakeActive
+                    ? 'bg-emerald-600/90 hover:bg-emerald-500 text-white border-emerald-400/50 shadow-lg shadow-emerald-500/20'
+                    : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700'
+                }`}
+                title={
+                  fullscreenWakeActive
+                    ? `กำลังบังคับเปิดหน้าจอค้างไว้ (${wakeMethod === 'native' ? 'Wake Lock API' : 'Fallback Stream'}) — คลิกเพื่อปิด`
+                    : 'คลิกเพื่อบังคับให้หน้าจอเปิดค้างไว้ตลอดคาบเรียน'
+                }
+              >
+                {fullscreenWakeActive ? (
+                  <>
+                    <Sun className="w-4 h-4 text-amber-200" />
+                    <span>เปิดจอค้างไว้ (Awake)</span>
+                    <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+                  </>
+                ) : (
+                  <>
+                    <Moon className="w-4 h-4 text-slate-400" />
+                    <span>จอค้าง: ปิด</span>
+                  </>
+                )}
+              </button>
+
+              {/* 2. End-of-Period Chime Toggle */}
+              <button
+                type="button"
+                onClick={handleToggleChime}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold border transition-all ${
+                  chimeEnabled
+                    ? 'bg-indigo-600/80 hover:bg-indigo-500 text-white border-indigo-400/50 shadow-md shadow-indigo-500/20'
+                    : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700'
+                }`}
+                title="เตือนด้วยเสียงกระดิ่งเมื่อเหลือ 5 นาทีสุดท้ายและเมื่อหมดเวลาคาบ"
+              >
+                {chimeEnabled ? (
+                  <>
+                    <BellRing className="w-4 h-4 text-amber-300" />
+                    <span>กระดิ่งเตือน: เปิด</span>
+                  </>
+                ) : (
+                  <>
+                    <BellOff className="w-4 h-4 text-slate-400" />
+                    <span>กระดิ่ง: ปิด</span>
+                  </>
+                )}
+              </button>
+
+              {/* 3. OLED / Projector Dimmer & Screen Protection */}
+              <button
+                type="button"
+                onClick={handleCycleDimmer}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs sm:text-sm font-semibold border border-slate-700 transition-colors"
+                title="ปรับความสว่างหน้าจอเพื่อถนอมสายตาหรือป้องกันจอ OLED เบิร์น"
+              >
+                <Eye className="w-4 h-4 text-sky-400" />
+                <span>
+                  {dimmerLevel === 'normal'
+                    ? 'ความสว่าง: 100%'
+                    : dimmerLevel === 'comfort'
+                    ? 'ถนอมสายตา: 75%'
+                    : 'ถนอมจอ OLED: 50%'}
+                </span>
+              </button>
+
+              {/* 4. Multi-Span Period Toggle */}
               {hasMultiSpan && (
                 <button
                   type="button"
                   onClick={() => setUseMultiSpanMode(prev => !prev)}
-                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-indigo-300 text-sm font-semibold border border-slate-700 transition-colors"
+                  className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-indigo-300 text-xs sm:text-sm font-semibold border border-slate-700 transition-colors"
                 >
-                  {useMultiSpanMode ? `โหมดนับเวลารวม (${multiSpanTiming.span} คาบ)` : 'โหมดนับเวลาแยกตามคาบ'}
+                  {useMultiSpanMode ? `นับเวลารวม (${multiSpanTiming.span} คาบ)` : 'นับแยกตามคาบ'}
                 </button>
               )}
+
+              {/* 5. True Browser Fullscreen (F11) Toggle */}
               <button
                 type="button"
-                onClick={() => setFullscreen(false)}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-semibold border border-slate-700 transition-colors"
+                onClick={toggleBrowserFullscreen}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs sm:text-sm font-semibold border border-slate-700 transition-colors"
+                title="ซ่อน/แสดงแถบเมนูเบราว์เซอร์และ Taskbar (F11)"
+              >
+                <Monitor className="w-4 h-4 text-indigo-400" />
+                <span className="hidden lg:inline">
+                  {isBrowserFullscreen ? 'แสดงแถบเบราว์เซอร์' : 'ไร้ขอบเต็มจอ (F11)'}
+                </span>
+              </button>
+
+              {/* 6. Exit Fullscreen Clock */}
+              <button
+                type="button"
+                onClick={handleCloseClassroomFullscreen}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-rose-950/80 hover:text-rose-200 hover:border-rose-700 text-slate-200 text-xs sm:text-sm font-semibold border border-slate-700 transition-colors"
               >
                 <Minimize2 className="w-4 h-4" />
                 <span>ย่อกลับ (ESC)</span>
@@ -528,8 +809,21 @@ export default function LivePeriodTracker({
             </div>
           </div>
 
-          {/* Center Giant Display */}
-          <div className="my-auto max-w-6xl w-full mx-auto space-y-8 text-center">
+          {/* Auto-Released After School Notice Banner */}
+          {autoReleasedNotice && (
+            <div className="mx-auto mt-2 px-4 py-2 rounded-xl bg-amber-500/20 border border-amber-400/40 text-amber-200 text-xs flex items-center gap-2">
+              <Moon className="w-4 h-4 shrink-0" />
+              <span>
+                ระบบได้ปิดโหมดเปิดจอค้างให้อัตโนมัติเนื่องจากสิ้นสุดเวลาเรียนประจำวันแล้ว (สามารถกดปุ่ม &quot;จอค้าง&quot; ด้านบนหากต้องการเปิดต่อ)
+              </span>
+            </div>
+          )}
+
+          {/* Center Giant Display (with subtle pixel shift when Awake is active to protect OLED/Projectors) */}
+          <div
+            className="my-auto max-w-6xl w-full mx-auto space-y-8 text-center transition-transform duration-1000"
+            style={{ transform: `translate(${pixelShift.x}px, ${pixelShift.y}px)` }}
+          >
             {/* Period & Subject Pill */}
             <div className="space-y-3">
               <div className="inline-flex items-center gap-2.5 px-5 py-2 rounded-full bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 text-lg sm:text-xl font-bold">
@@ -628,9 +922,17 @@ export default function LivePeriodTracker({
             )}
           </div>
 
-          {/* Bottom Next Class Info */}
-          <div className="flex items-center justify-between text-sm text-slate-400 border-t border-slate-800 pt-4">
-            <div>{styles.statusLabel}</div>
+          {/* Bottom Next Class & Wake Lock Status Info */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs sm:text-sm text-slate-400 border-t border-slate-800 pt-4">
+            <div className="flex items-center gap-3 flex-wrap">
+              <span>{styles.statusLabel}</span>
+              <span className="text-slate-600">•</span>
+              <span className={fullscreenWakeActive ? 'text-emerald-400 font-medium' : 'text-slate-500'}>
+                {fullscreenWakeActive
+                  ? `☀️ โหมดเปิดจอค้างทำงานอยู่ (${isAwake ? 'ล็อกจอสำเร็จ' : 'กำลังล็อกจอ'} • ตัดอัตโนมัติหลังเลิกเรียน)`
+                  : '🌙 โหมดเปิดจอค้างปิดอยู่'}
+              </span>
+            </div>
             {nextTeachingSlotInfo && (
               <div>
                 คาบสอนถัดไป: <strong className="text-white">คาบ {nextTeachingSlotInfo.startPeriod} ({nextTeachingSlotInfo.periodObj.startTime} น.) • {nextTeachingSlotInfo.subject.code} {nextTeachingSlotInfo.subject.name} (ห้อง {nextTeachingSlotInfo.room})</strong>
