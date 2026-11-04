@@ -11,6 +11,7 @@ export default function MultiDayEventModal({
   semesterId,
   onSave,
   onDelete,
+  onOpenHolidaysSync,
 }) {
   const [title, setTitle] = useState('');
   const [startDate, setStartDate] = useState('');
@@ -104,12 +105,24 @@ export default function MultiDayEventModal({
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {!editingEvent && onOpenHolidaysSync && (
+              <button
+                type="button"
+                onClick={onOpenHolidaysSync}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:hover:bg-purple-900/60 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-xs font-semibold transition-colors"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>ซิงค์วันหยุดราชการ</span>
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Form Body */}

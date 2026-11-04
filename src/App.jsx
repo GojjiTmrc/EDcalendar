@@ -20,6 +20,8 @@ import { Loader2, GraduationCap, Plus } from 'lucide-react';
 import { getActiveSession, subscribeAuthChanges, signOut } from './services/supabaseClient';
 import { getStoredPeriods } from './utils/periodConfig';
 import { useRealtimePeriodClock } from './utils/periodClockUtils';
+import { isSubjectInSemester } from './services/summaryService';
+import { getThaiHolidaysForSemester } from './utils/thaiHolidays';
 
 import {
   loadData,
@@ -285,6 +287,29 @@ export default function App() {
     });
   };
 
+  const handleBatchSaveMultiDayEvents = (eventsArray = []) => {
+    if (!Array.isArray(eventsArray) || eventsArray.length === 0) return;
+    updateData((prev) => {
+      const currentList = [...(prev.multiDayEvents || [])];
+      for (const ev of eventsArray) {
+        const idx = currentList.findIndex(
+          (existing) =>
+            existing.id === ev.id ||
+            ((!existing.semesterId || existing.semesterId === ev.semesterId) &&
+              existing.startDate === ev.startDate &&
+              existing.endDate === ev.endDate &&
+              existing.title === ev.title)
+        );
+        if (idx >= 0) {
+          currentList[idx] = ev;
+        } else {
+          currentList.push(ev);
+        }
+      }
+      return { ...prev, multiDayEvents: currentList };
+    });
+  };
+
   const handleDeleteMultiDayEvent = (eventId) => {
     updateData((prev) => ({
       ...prev,
@@ -321,7 +346,51 @@ export default function App() {
     updateData((prev) => ({ ...prev, activeSemesterId: semesterId }));
   };
 
-  const handleSaveSemester = (semesterData) => {
+  const handleCloneSemesterSlots = (sourceSemesterId, targetSemesterObj, filterByTermScope = true) => {
+    if (!sourceSemesterId || !targetSemesterObj) return 0;
+    let clonedCount = 0;
+
+    updateData((prev) => {
+      const subjectMap = new Map((prev.subjects || []).map((s) => [s.id, s]));
+      const sourceSlots = (prev.slots || []).filter((sl) => sl.semesterId === sourceSemesterId);
+      const existingTargetSlots = (prev.slots || []).filter((sl) => sl.semesterId === targetSemesterObj.id);
+
+      const newClonedSlots = [];
+      for (const sl of sourceSlots) {
+        const sub = subjectMap.get(sl.subjectId);
+        if (filterByTermScope && sub && !isSubjectInSemester(sub, targetSemesterObj)) {
+          continue;
+        }
+        // Avoid duplicating same dayOfWeek + startTime in target semester
+        const duplicate = existingTargetSlots.some(
+          (ex) => ex.dayOfWeek === sl.dayOfWeek && ex.startTime === sl.startTime
+        );
+        if (duplicate) continue;
+
+        newClonedSlots.push({
+          ...sl,
+          id: `slot-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          semesterId: targetSemesterObj.id,
+        });
+      }
+
+      clonedCount = newClonedSlots.length;
+      return {
+        ...prev,
+        slots: [...(prev.slots || []), ...newClonedSlots],
+      };
+    });
+
+    return clonedCount;
+  };
+
+  const handleSaveSemester = (semesterData, options = {}) => {
+    const {
+      cloneFromSemesterId = '',
+      filterByTermScope = true,
+      autoSyncHolidays = false,
+    } = options;
+
     updateData((prev) => {
       const exists = prev.semesters.findIndex(s => s.id === semesterData.id);
       let newSemesters;
@@ -331,7 +400,53 @@ export default function App() {
       } else {
         newSemesters = [...prev.semesters, semesterData];
       }
-      return { ...prev, semesters: newSemesters, activeSemesterId: semesterData.id };
+
+      let nextSlots = [...(prev.slots || [])];
+      if (exists < 0 && cloneFromSemesterId) {
+        const subjectMap = new Map((prev.subjects || []).map((s) => [s.id, s]));
+        const sourceSlots = nextSlots.filter((sl) => sl.semesterId === cloneFromSemesterId);
+        for (const sl of sourceSlots) {
+          const sub = subjectMap.get(sl.subjectId);
+          if (filterByTermScope && sub && !isSubjectInSemester(sub, semesterData)) {
+            continue;
+          }
+          nextSlots.push({
+            ...sl,
+            id: `slot-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            semesterId: semesterData.id,
+          });
+        }
+      }
+
+      let nextMultiDayEvents = [...(prev.multiDayEvents || [])];
+      if (exists < 0 && autoSyncHolidays) {
+        const holidays = getThaiHolidaysForSemester(semesterData, nextMultiDayEvents, {
+          includeSubstitute: true,
+        });
+        for (const h of holidays) {
+          if (!h.isAlreadySynced) {
+            nextMultiDayEvents.push({
+              id: `mde-holiday-${semesterData.id}-${h.date}`,
+              semesterId: semesterData.id,
+              title: h.title,
+              startDate: h.date,
+              endDate: h.date,
+              type: 'holiday',
+              cancelClasses: true,
+              colorId: h.isSubstitute ? 'amber' : 'purple',
+              notes: h.notes || 'ซิงค์จากปฏิทินวันหยุดราชการไทยอัตโนมัติ',
+            });
+          }
+        }
+      }
+
+      return {
+        ...prev,
+        semesters: newSemesters,
+        activeSemesterId: semesterData.id,
+        slots: nextSlots,
+        multiDayEvents: nextMultiDayEvents,
+      };
     });
   };
 
@@ -563,6 +678,7 @@ export default function App() {
                 onResetOverride={handleResetOverride}
                 onDeleteCustomSession={handleDeleteCustomSession}
                 onSaveMultiDayEvent={handleSaveMultiDayEvent}
+                onBatchSaveMultiDayEvents={handleBatchSaveMultiDayEvents}
                 onDeleteMultiDayEvent={handleDeleteMultiDayEvent}
                 onOpenAddShortNote={handleOpenAddShortNote}
                 onOpenEditShortNote={handleOpenEditShortNote}
@@ -650,10 +766,12 @@ export default function App() {
         isOpen={isSemesterModalOpen}
         onClose={() => setIsSemesterModalOpen(false)}
         semesters={data.semesters}
+        slots={data.slots || []}
         activeSemesterId={data.activeSemesterId}
         onSelectSemester={handleSelectSemester}
         onSaveSemester={handleSaveSemester}
         onDeleteSemester={handleDeleteSemester}
+        onCloneSemesterSlots={handleCloneSemesterSlots}
       />
 
       <AccountModal

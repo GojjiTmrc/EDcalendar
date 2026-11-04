@@ -11,13 +11,15 @@ import {
   Clock,
   FileText,
   BookCheck,
-  ArrowDown
+  ArrowDown,
+  Sparkles
 } from 'lucide-react';
 import MonthView from './MonthView';
 import WeekView from './WeekView';
 import DayView from './DayView';
 import SessionDetailModal from './SessionDetailModal';
 import MultiDayEventModal from './MultiDayEventModal';
+import ThaiHolidaysSyncModal from './ThaiHolidaysSyncModal';
 import CalendarBottomWorkspace from './CalendarBottomWorkspace';
 import {
   THAI_MONTHS_FULL,
@@ -44,6 +46,7 @@ export default function TeachingCalendar({
   onResetOverride,
   onDeleteCustomSession,
   onSaveMultiDayEvent,
+  onBatchSaveMultiDayEvents,
   onDeleteMultiDayEvent,
   onOpenAddShortNote,
   onOpenEditShortNote,
@@ -75,6 +78,7 @@ export default function TeachingCalendar({
   // Multi-day event modal state
   const [isMultiDayModalOpen, setIsMultiDayModalOpen] = useState(false);
   const [editingMultiDayEvent, setEditingMultiDayEvent] = useState(null);
+  const [isHolidaysSyncModalOpen, setIsHolidaysSyncModalOpen] = useState(false);
 
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth();
@@ -290,6 +294,16 @@ export default function TeachingCalendar({
             <ArrowDown className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
           </button>
 
+          {/* Sync Thai Public Holidays Button */}
+          <button
+            onClick={() => setIsHolidaysSyncModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-2 bg-purple-50 dark:bg-purple-950/60 hover:bg-purple-100 dark:hover:bg-purple-900/60 text-purple-800 dark:text-purple-200 border border-purple-300 dark:border-purple-800 rounded-xl text-xs font-semibold transition-all hover:scale-[1.02]"
+            title="ซิงค์วันหยุดราชการและวันสำคัญไทยประจำภาคเรียนเข้าปฏิทินอัตโนมัติ"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+            <span>ซิงค์วันหยุดราชการ</span>
+          </button>
+
           {/* Add Multi-Day Event Button */}
           <button
             onClick={handleOpenAddMultiDay}
@@ -438,6 +452,19 @@ export default function TeachingCalendar({
         semesterId={semester?.id}
         onSave={onSaveMultiDayEvent}
         onDelete={onDeleteMultiDayEvent}
+        onOpenHolidaysSync={() => {
+          setIsMultiDayModalOpen(false);
+          setIsHolidaysSyncModalOpen(true);
+        }}
+      />
+
+      {/* Thai Public Holidays Sync Modal */}
+      <ThaiHolidaysSyncModal
+        isOpen={isHolidaysSyncModalOpen}
+        onClose={() => setIsHolidaysSyncModalOpen(false)}
+        semester={semester}
+        multiDayEvents={multiDayEvents}
+        onBatchSaveMultiDayEvents={onBatchSaveMultiDayEvents}
       />
 
     </div>
