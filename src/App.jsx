@@ -22,6 +22,11 @@ import { getStoredPeriods } from './utils/periodConfig';
 import { useRealtimePeriodClock } from './utils/periodClockUtils';
 import { isSubjectInSemester } from './services/summaryService';
 import { getThaiHolidaysForSemester } from './utils/thaiHolidays';
+import {
+  normalizeSoundSettings,
+  getStoredSoundSettings,
+  saveStoredSoundSettings,
+} from './utils/wakeLockUtils';
 
 import {
   loadData,
@@ -54,6 +59,19 @@ export default function App() {
     const enabled = Boolean(nextVal);
     setConfirmTeachingMode(enabled);
     saveStoredConfirmTeachingMode(enabled);
+  };
+
+  // Per-account sound settings (saved per userId locally + synced in cloud data)
+  const soundSettings = data?.soundSettings
+    ? normalizeSoundSettings(data.soundSettings)
+    : getStoredSoundSettings(user?.id || null);
+
+  const handleChangeSoundSettings = (nextSound) => {
+    const normalized = saveStoredSoundSettings(user?.id || null, nextSound);
+    updateData((prev) => ({
+      ...prev,
+      soundSettings: normalized,
+    }));
   };
 
   // Modals state
@@ -471,7 +489,10 @@ export default function App() {
 
   const handleResetData = () => {
     const res = resetData();
-    updateData(res);
+    updateData({
+      ...res,
+      soundSettings,
+    });
   };
 
   const handleForceSyncCloud = async () => {
@@ -663,6 +684,8 @@ export default function App() {
                 clockState={clockState}
                 isFullscreenClockOpen={isFullscreenClockOpen}
                 setIsFullscreenClockOpen={setIsFullscreenClockOpen}
+                soundSettings={soundSettings}
+                onChangeSoundSettings={handleChangeSoundSettings}
               />
             )}
             
@@ -791,6 +814,8 @@ export default function App() {
         onChangeDefaultTab={(nextTab) => setDefaultTab(nextTab)}
         confirmTeachingMode={confirmTeachingMode}
         onChangeConfirmTeachingMode={handleChangeConfirmTeachingMode}
+        soundSettings={soundSettings}
+        onChangeSoundSettings={handleChangeSoundSettings}
         periods={periods}
         onSavePeriods={(nextPeriods) => setPeriods(nextPeriods)}
         allData={data}

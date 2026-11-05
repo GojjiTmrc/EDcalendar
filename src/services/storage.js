@@ -8,6 +8,11 @@ import {
 } from './sampleData';
 import { supabase, checkSupabaseHealth, CLOUD_FIRESTORE_BASE_URL } from './supabaseClient';
 import { getSemesterTerm } from './summaryService';
+import {
+  normalizeSoundSettings,
+  getStoredSoundSettings,
+  saveStoredSoundSettings,
+} from '../utils/wakeLockUtils';
 
 const STORAGE_KEY = 'edcalendar_data_v1';
 const USER_STORAGE_PREFIX = 'edcalendar_user_data_';
@@ -35,6 +40,7 @@ function computeDataHash(data) {
       multiDayEvents: data.multiDayEvents || [],
       shortNotes: data.shortNotes || [],
       activeSemesterId: data.activeSemesterId || null,
+      soundSettings: data.soundSettings ? normalizeSoundSettings(data.soundSettings) : null,
     });
   } catch {
     return '';
@@ -92,6 +98,7 @@ export function normalizeAndMigrateData(raw) {
     multiDayEvents: Array.isArray(raw.multiDayEvents) ? raw.multiDayEvents : [],
     shortNotes: Array.isArray(raw.shortNotes) ? raw.shortNotes : [],
     activeSemesterId: raw.activeSemesterId || semesters[0]?.id || null,
+    soundSettings: raw.soundSettings ? normalizeSoundSettings(raw.soundSettings) : undefined,
     updatedAt: raw.updatedAt || null,
   };
 }
@@ -283,7 +290,15 @@ export async function loadCloudData(userId) {
   const cloudRecord = await fetchFirestoreCalendar(userId, 3500);
 
   if (cloudRecord && cloudRecord.data) {
-    const cloudData = cloudRecord.data;
+    const cloudData = {
+      ...cloudRecord.data,
+      soundSettings: cloudRecord.data.soundSettings
+        ? normalizeSoundSettings(cloudRecord.data.soundSettings)
+        : localUserCache?.soundSettings
+        ? normalizeSoundSettings(localUserCache.soundSettings)
+        : getStoredSoundSettings(userId),
+    };
+    saveStoredSoundSettings(userId, cloudData.soundSettings);
     const localHasRealData = localUserCache && !isSampleDataset(localUserCache);
 
     if (localHasRealData) {
@@ -293,8 +308,10 @@ export async function loadCloudData(userId) {
       if (localTime > cloudTime) {
         const merged = normalizeAndMigrateData({
           ...localUserCache,
+          soundSettings: localUserCache.soundSettings || cloudData.soundSettings,
           updatedAt: new Date().toISOString(),
         });
+        saveStoredSoundSettings(userId, merged.soundSettings);
         saveUserDataLocal(userId, merged);
         lastSyncedTimestamp = merged.updatedAt;
         lastSyncedHash = computeDataHash(merged);
@@ -322,7 +339,11 @@ export async function loadCloudData(userId) {
           .maybeSingle();
 
         if (!error && data?.calendar_data) {
-          const normalized = normalizeAndMigrateData(data.calendar_data);
+          const normalized = normalizeAndMigrateData({
+            ...data.calendar_data,
+            soundSettings: data.calendar_data.soundSettings || getStoredSoundSettings(userId),
+          });
+          saveStoredSoundSettings(userId, normalized.soundSettings);
           saveUserDataLocal(userId, normalized);
           pushFirestoreCalendar(userId, normalized);
           return normalized;
@@ -336,8 +357,10 @@ export async function loadCloudData(userId) {
   // 3. Brand-new user with no cloud data yet: use their own localUserCache if present, otherwise start with a clean empty calendar
   const initialToSave = normalizeAndMigrateData({
     ...(localUserCache || getEmptyState()),
+    soundSettings: localUserCache?.soundSettings || getStoredSoundSettings(userId),
     updatedAt: new Date().toISOString(),
   });
+  saveStoredSoundSettings(userId, initialToSave.soundSettings);
   saveUserDataLocal(userId, initialToSave);
   lastSyncedTimestamp = initialToSave.updatedAt;
   lastSyncedHash = computeDataHash(initialToSave);
@@ -450,6 +473,9 @@ export function subscribeRealtimeCloudData(userId, onRemoteUpdate, onSyncStatus)
     lastSyncedHash = incomingHash;
     if (incomingUpdatedAt) {
       lastSyncedTimestamp = incomingUpdatedAt;
+    }
+    if (normalized.soundSettings) {
+      saveStoredSoundSettings(userId, normalized.soundSettings);
     }
     saveUserDataLocal(userId, normalized);
     onRemoteUpdate(normalized);
@@ -592,6 +618,7 @@ export function importBackupJSON(fileContent) {
       multiDayEvents: content.multiDayEvents || [],
       shortNotes: content.shortNotes || [],
       activeSemesterId: content.activeSemesterId || content.semesters[0]?.id || null,
+      soundSettings: content.soundSettings ? normalizeSoundSettings(content.soundSettings) : undefined,
       updatedAt: new Date().toISOString(),
     });
     saveData(cleanData);

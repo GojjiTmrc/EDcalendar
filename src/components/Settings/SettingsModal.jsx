@@ -16,6 +16,9 @@ import {
   AlertTriangle,
   FileSignature,
   Layout,
+  Volume2,
+  VolumeX,
+  BellRing,
 } from 'lucide-react';
 import {
   DEFAULT_PERIODS,
@@ -25,6 +28,12 @@ import {
   getStoredSignatures,
   saveStoredSignatures,
 } from '../../utils/periodConfig';
+import {
+  normalizeSoundSettings,
+  getStoredSoundSettings,
+  saveStoredSoundSettings,
+  playClassroomChime,
+} from '../../utils/wakeLockUtils';
 import { exportBackupJSON, importBackupJSON } from '../../services/storage';
 
 export const DEFAULT_TAB_STORAGE_KEY = 'edcalendar_default_tab';
@@ -67,6 +76,8 @@ export default function SettingsModal({
   onChangeDefaultTab,
   confirmTeachingMode,
   onChangeConfirmTeachingMode,
+  soundSettings,
+  onChangeSoundSettings,
   periods,
   onSavePeriods,
   allData = {},
@@ -83,6 +94,9 @@ export default function SettingsModal({
   const [isConfirmModeEnabled, setIsConfirmModeEnabled] = useState(() =>
     confirmTeachingMode !== undefined ? confirmTeachingMode : getStoredConfirmTeachingMode()
   );
+  const [localSoundSettings, setLocalSoundSettings] = useState(() =>
+    soundSettings ? normalizeSoundSettings(soundSettings) : getStoredSoundSettings(user?.id || null)
+  );
   const [statusBanner, setStatusBanner] = useState(null); // { success: boolean, message: string }
   const [isSyncingNow, setIsSyncingNow] = useState(false);
   const fileInputRef = useRef(null);
@@ -95,9 +109,12 @@ export default function SettingsModal({
       setIsConfirmModeEnabled(
         confirmTeachingMode !== undefined ? confirmTeachingMode : getStoredConfirmTeachingMode()
       );
+      setLocalSoundSettings(
+        soundSettings ? normalizeSoundSettings(soundSettings) : getStoredSoundSettings(user?.id || null)
+      );
       setStatusBanner(null);
     }
-  }, [isOpen, periods, defaultTab, confirmTeachingMode]);
+  }, [isOpen, periods, defaultTab, confirmTeachingMode, soundSettings, user?.id]);
 
   if (!isOpen) return null;
 
@@ -140,20 +157,39 @@ export default function SettingsModal({
     }
   };
 
+  const handleUpdateSoundSettings = (patch, previewType = null) => {
+    const merged = normalizeSoundSettings({
+      ...localSoundSettings,
+      ...patch,
+    });
+    setLocalSoundSettings(merged);
+    saveStoredSoundSettings(user?.id || null, merged);
+    if (onChangeSoundSettings) {
+      onChangeSoundSettings(merged);
+    }
+    if (previewType && merged.enabled && merged.volume > 0) {
+      playClassroomChime(previewType, merged.volume);
+    }
+  };
+
   const handleSaveSettings = (e) => {
     e.preventDefault();
     saveStoredPeriods(periodList);
     saveStoredSignatures(signatures);
     saveStoredConfirmTeachingMode(isConfirmModeEnabled);
+    saveStoredSoundSettings(user?.id || null, localSoundSettings);
     if (onSavePeriods) {
       onSavePeriods(periodList);
     }
     if (onChangeConfirmTeachingMode) {
       onChangeConfirmTeachingMode(isConfirmModeEnabled);
     }
+    if (onChangeSoundSettings) {
+      onChangeSoundSettings(localSoundSettings);
+    }
     setStatusBanner({
       success: true,
-      message: 'บันทึกการตั้งค่าระบบและเวลาคาบเรียนเรียบร้อยแล้ว!',
+      message: 'บันทึกการตั้งค่าระบบ เสียงแจ้งเตือน และเวลาคาบเรียนเรียบร้อยแล้ว!',
     });
   };
 
@@ -453,6 +489,190 @@ export default function SettingsModal({
                       แสดง &quot;สัปดาห์ที่สอนจริง (คอนเฟิร์ม)&quot; นับจากคาบที่บันทึกหลังการสอนแล้ว
                     </div>
                   </button>
+                </div>
+              </div>
+
+              {/* 4. Classroom Sound & Volume Configuration (Saved Per Account) */}
+              <div className="space-y-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <label className="block font-bold text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                        4. ระบบเสียงแจ้งเตือนคาบเรียน (Classroom Sound & Volume)
+                      </label>
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/80 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                        <span>บันทึกตามบัญชี: {user ? (user.username || user.user_metadata?.username || user.email) : 'โหมดทดลองใช้'}</span>
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      ส่งเสียงกระดิ่งแจ้งเตือนเฉพาะเมื่อหมดเวลาคาบเรียน สามารถปรับระดับความดังหรือปิดเสียงได้ตามต้องการ
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={localSoundSettings.enabled && localSoundSettings.volume > 0}
+                    onClick={() => {
+                      const isCurrentlyOn = localSoundSettings.enabled && localSoundSettings.volume > 0;
+                      const nextEnabled = !isCurrentlyOn;
+                      const nextVolume = nextEnabled && localSoundSettings.volume === 0 ? 80 : localSoundSettings.volume;
+                      handleUpdateSoundSettings(
+                        { enabled: nextEnabled, volume: nextVolume },
+                        nextEnabled ? 'test' : null
+                      );
+                    }}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      localSoundSettings.enabled && localSoundSettings.volume > 0
+                        ? 'bg-indigo-600'
+                        : 'bg-slate-300 dark:bg-slate-700'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        localSoundSettings.enabled && localSoundSettings.volume > 0 ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {/* Mode Buttons: Enable vs Mute */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextVol = localSoundSettings.volume === 0 ? 80 : localSoundSettings.volume;
+                      handleUpdateSoundSettings({ enabled: true, volume: nextVol }, 'test');
+                    }}
+                    className={`p-3 rounded-xl border text-xs text-left transition-all flex items-center gap-2.5 ${
+                      localSoundSettings.enabled && localSoundSettings.volume > 0
+                        ? 'bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-indigo-950/60 dark:border-indigo-400 dark:text-indigo-300 font-semibold ring-2 ring-indigo-500/20'
+                        : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-900/70 text-indigo-600 dark:text-indigo-300 flex items-center justify-center shrink-0">
+                      <Volume2 className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="font-bold">เปิดเสียงแจ้งเตือนหมดคาบ</div>
+                      <div className="text-[11px] opacity-80 font-normal">
+                        ดังเมื่อหมดเวลาคาบเรียน (ความดัง {localSoundSettings.volume || 80}%)
+                      </div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleUpdateSoundSettings({ enabled: false })}
+                    className={`p-3 rounded-xl border text-xs text-left transition-all flex items-center gap-2.5 ${
+                      !localSoundSettings.enabled || localSoundSettings.volume === 0
+                        ? 'bg-rose-50 border-rose-500 text-rose-700 dark:bg-rose-950/60 dark:border-rose-400 dark:text-rose-300 font-semibold ring-2 ring-rose-500/20'
+                        : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-rose-100 dark:bg-rose-900/70 text-rose-600 dark:text-rose-300 flex items-center justify-center shrink-0">
+                      <VolumeX className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="font-bold">ปิดเสียง (Mute)</div>
+                      <div className="text-[11px] opacity-80 font-normal">
+                        ไม่ส่งเสียงกระดิ่งแจ้งเตือนระหว่างใช้งาน
+                      </div>
+                    </div>
+                  </button>
+                </div>
+
+                {/* Volume Slider & Test Chime Card */}
+                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-200">
+                      {localSoundSettings.enabled && localSoundSettings.volume > 0 ? (
+                        <Volume2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                      ) : (
+                        <VolumeX className="w-4 h-4 text-slate-400" />
+                      )}
+                      <span>ระดับความดังเสียงกระดิ่ง:</span>
+                      <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                        {localSoundSettings.enabled ? `${localSoundSettings.volume}%` : 'ปิดเสียง (0%)'}
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const testVol = localSoundSettings.volume > 0 ? localSoundSettings.volume : 80;
+                        playClassroomChime('end', testVol);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs transition-colors"
+                      title="คลิกเพื่อฟังตัวอย่างเสียงกระดิ่งหมดเวลาคาบเรียนที่ระดับความดังนี้"
+                    >
+                      <BellRing className="w-3.5 h-3.5" />
+                      <span>ทดสอบเสียงกระดิ่ง</span>
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <span className="text-[11px] font-mono text-slate-400 w-7">0%</span>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      step="1"
+                      value={localSoundSettings.enabled ? localSoundSettings.volume : 0}
+                      onChange={(e) => {
+                        const nextVol = Number(e.target.value);
+                        handleUpdateSoundSettings({
+                          enabled: nextVol > 0,
+                          volume: nextVol,
+                        });
+                      }}
+                      className="flex-1 h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                    />
+                    <span className="text-[11px] font-mono text-slate-400 w-9 text-right">100%</span>
+                  </div>
+
+                  {/* Quick Volume Presets */}
+                  <div className="flex items-center justify-between gap-1.5 flex-wrap pt-1">
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                      เลือกระดับเสียงด่วน:
+                    </span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {[
+                        { label: 'ปิดเสียง', vol: 0 },
+                        { label: '25%', vol: 25 },
+                        { label: '50%', vol: 50 },
+                        { label: '75%', vol: 75 },
+                        { label: '100%', vol: 100 },
+                      ].map((preset) => {
+                        const isActive =
+                          preset.vol === 0
+                            ? !localSoundSettings.enabled || localSoundSettings.volume === 0
+                            : localSoundSettings.enabled && localSoundSettings.volume === preset.vol;
+                        return (
+                          <button
+                            key={preset.label}
+                            type="button"
+                            onClick={() =>
+                              handleUpdateSoundSettings(
+                                {
+                                  enabled: preset.vol > 0,
+                                  volume: preset.vol,
+                                },
+                                preset.vol > 0 ? 'test' : null
+                              )
+                            }
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-colors ${
+                              isActive
+                                ? 'bg-indigo-600 text-white border-indigo-600'
+                                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
+                            }`}
+                          >
+                            {preset.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

@@ -32,6 +32,8 @@ export default function TimetableGrid({
   clockState = null,
   isFullscreenClockOpen = false,
   setIsFullscreenClockOpen,
+  soundSettings,
+  onChangeSoundSettings,
 }) {
   const periods = propPeriods || getStoredPeriods();
   const [selectedSubjectFilter, setSelectedSubjectFilter] = useState('all');
@@ -165,6 +167,8 @@ export default function TimetableGrid({
           onEditSlot={onEditSlot}
           isFullscreenOpen={isFullscreenClockOpen}
           setIsFullscreenOpen={setIsFullscreenClockOpen}
+          soundSettings={soundSettings}
+          onChangeSoundSettings={onChangeSoundSettings}
         />
       )}
 

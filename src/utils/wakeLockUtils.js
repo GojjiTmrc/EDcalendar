@@ -2,7 +2,63 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 
 const WAKE_LOCK_PREF_KEY = 'edcalendar_fullscreen_wakelock_pref';
 const CHIME_PREF_KEY = 'edcalendar_classroom_chime_enabled';
+const SOUND_SETTINGS_KEY_PREFIX = 'edcalendar_sound_settings_';
 const DIMMER_PREF_KEY = 'edcalendar_classroom_dimmer_level';
+
+export const DEFAULT_SOUND_SETTINGS = {
+  enabled: true,
+  volume: 80, // 0 - 100
+};
+
+export function normalizeSoundSettings(raw) {
+  if (!raw || typeof raw !== 'object') {
+    return { ...DEFAULT_SOUND_SETTINGS };
+  }
+  const enabled = raw.enabled !== undefined ? Boolean(raw.enabled) : DEFAULT_SOUND_SETTINGS.enabled;
+  const numVol = Number(raw.volume);
+  const volume = Number.isFinite(numVol)
+    ? Math.min(100, Math.max(0, Math.round(numVol)))
+    : DEFAULT_SOUND_SETTINGS.volume;
+  return { enabled, volume };
+}
+
+function getAccountSoundStorageKey(userId) {
+  const safeId = userId ? String(userId).trim() : 'guest';
+  return `${SOUND_SETTINGS_KEY_PREFIX}${safeId}`;
+}
+
+export function getStoredSoundSettings(userId = null) {
+  try {
+    const key = getAccountSoundStorageKey(userId);
+    const saved = localStorage.getItem(key);
+    if (saved) {
+      return normalizeSoundSettings(JSON.parse(saved));
+    }
+    // Fallback to legacy global chime key if present
+    const legacy = localStorage.getItem(CHIME_PREF_KEY);
+    if (legacy !== null) {
+      return normalizeSoundSettings({
+        enabled: legacy === 'true',
+        volume: DEFAULT_SOUND_SETTINGS.volume,
+      });
+    }
+  } catch {
+    // Ignore storage error
+  }
+  return { ...DEFAULT_SOUND_SETTINGS };
+}
+
+export function saveStoredSoundSettings(userId = null, settings = DEFAULT_SOUND_SETTINGS) {
+  const normalized = normalizeSoundSettings(settings);
+  try {
+    const key = getAccountSoundStorageKey(userId);
+    localStorage.setItem(key, JSON.stringify(normalized));
+    localStorage.setItem(CHIME_PREF_KEY, String(Boolean(normalized.enabled)));
+  } catch {
+    // Ignore storage error
+  }
+  return normalized;
+}
 
 export function getStoredWakeLockPref() {
   try {
@@ -22,20 +78,16 @@ export function saveStoredWakeLockPref(enabled) {
   }
 }
 
-export function getStoredChimePref() {
-  try {
-    return localStorage.getItem(CHIME_PREF_KEY) === 'true';
-  } catch {
-    return false;
-  }
+export function getStoredChimePref(userId = null) {
+  return getStoredSoundSettings(userId).enabled;
 }
 
-export function saveStoredChimePref(enabled) {
-  try {
-    localStorage.setItem(CHIME_PREF_KEY, String(Boolean(enabled)));
-  } catch {
-    // Ignore storage error
-  }
+export function saveStoredChimePref(enabled, userId = null) {
+  const current = getStoredSoundSettings(userId);
+  saveStoredSoundSettings(userId, {
+    ...current,
+    enabled: Boolean(enabled),
+  });
 }
 
 export function getStoredDimmerLevel() {
@@ -304,24 +356,32 @@ export function useBrowserFullscreen() {
 
 /**
  * Synthesizes pleasant classroom chimes using Web Audio API (no external audio files needed)
- * @param {'test' | 'warning' | 'end'} type
+ * @param {'test' | 'end'} type
+ * @param {number} volumePercent - Volume level from 0 to 100 (default 80)
  */
-export function playClassroomChime(type = 'test') {
+export function playClassroomChime(type = 'test', volumePercent = 80) {
   try {
+    const numVol = Number(volumePercent);
+    const safeVol = Number.isFinite(numVol) ? Math.min(100, Math.max(0, numVol)) : 80;
+    if (safeVol <= 0) return;
+
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (!AudioCtx) return;
 
     const ctx = new AudioCtx();
     const now = ctx.currentTime;
+    // Scale relative to default 80% so 100% is louder and 0% is silent
+    const volumeScale = safeVol / 80;
 
     const playNote = (freq, startOffset, duration, peakGain = 0.18) => {
+      const scaledPeak = Math.min(0.4, Math.max(0.0005, peakGain * volumeScale));
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = 'sine';
       osc.frequency.setValueAtTime(freq, now + startOffset);
 
       gain.gain.setValueAtTime(0.0001, now + startOffset);
-      gain.gain.exponentialRampToValueAtTime(peakGain, now + startOffset + 0.03);
+      gain.gain.exponentialRampToValueAtTime(scaledPeak, now + startOffset + 0.03);
       gain.gain.exponentialRampToValueAtTime(0.0001, now + startOffset + duration);
 
       osc.connect(gain);
@@ -335,13 +395,8 @@ export function playClassroomChime(type = 'test') {
       // Gentle 2-note confirmation (G5 -> C6)
       playNote(783.99, 0, 0.22, 0.12);
       playNote(1046.5, 0.18, 0.4, 0.14);
-    } else if (type === 'warning') {
-      // 5-minute wrap-up reminder chime (E5 -> G5 -> E5)
-      playNote(659.25, 0, 0.35, 0.16);
-      playNote(783.99, 0.28, 0.35, 0.16);
-      playNote(659.25, 0.56, 0.55, 0.16);
     } else if (type === 'end') {
-      // End-of-period 4-note school chime (E5 -> G5 -> C5 -> G5 -> C6)
+      // End-of-period school chime (E5 -> G5 -> C5 -> G5 -> C6)
       playNote(659.25, 0, 0.4, 0.2);
       playNote(783.99, 0.35, 0.4, 0.2);
       playNote(523.25, 0.7, 0.4, 0.2);

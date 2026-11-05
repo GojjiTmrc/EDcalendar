@@ -27,8 +27,9 @@ import {
   playClassroomChime,
   getStoredWakeLockPref,
   saveStoredWakeLockPref,
-  getStoredChimePref,
-  saveStoredChimePref,
+  normalizeSoundSettings,
+  getStoredSoundSettings,
+  saveStoredSoundSettings,
   getStoredDimmerLevel,
   saveStoredDimmerLevel,
 } from '../../utils/wakeLockUtils';
@@ -38,6 +39,8 @@ export default function LivePeriodTracker({
   onEditSlot,
   isFullscreenOpen = false,
   setIsFullscreenOpen,
+  soundSettings: propSoundSettings,
+  onChangeSoundSettings,
 }) {
   const [useMultiSpanMode, setUseMultiSpanMode] = useState(false);
   const [internalFullscreen, setInternalFullscreen] = useState(false);
@@ -50,10 +53,16 @@ export default function LivePeriodTracker({
   const [fullscreenWakeActive, setFullscreenWakeActive] = useState(false);
 
   // Classroom Chime & OLED Dimmer states
-  const [chimeEnabled, setChimeEnabled] = useState(() => getStoredChimePref());
+  const [internalSoundSettings, setInternalSoundSettings] = useState(() => getStoredSoundSettings());
   const [dimmerLevel, setDimmerLevel] = useState(() => getStoredDimmerLevel()); // 'normal' | 'comfort' | 'oled'
   const [pixelShift, setPixelShift] = useState({ x: 0, y: 0 });
   const lastChimeKeyRef = useRef('');
+
+  const effectiveSound = propSoundSettings
+    ? normalizeSoundSettings(propSoundSettings)
+    : internalSoundSettings;
+  const chimeEnabled = effectiveSound.enabled && effectiveSound.volume > 0;
+  const soundVolume = effectiveSound.volume;
 
   const isFullscreen = isFullscreenOpen !== undefined ? isFullscreenOpen : internalFullscreen;
   const setFullscreen = setIsFullscreenOpen || setInternalFullscreen;
@@ -120,11 +129,20 @@ export default function LivePeriodTracker({
   };
 
   const handleToggleChime = () => {
-    const next = !chimeEnabled;
-    setChimeEnabled(next);
-    saveStoredChimePref(next);
-    if (next) {
-      playClassroomChime('test');
+    const nextEnabled = !chimeEnabled;
+    const nextVolume = nextEnabled && soundVolume === 0 ? 80 : soundVolume;
+    const nextSettings = {
+      enabled: nextEnabled,
+      volume: nextVolume,
+    };
+    setInternalSoundSettings(nextSettings);
+    if (onChangeSoundSettings) {
+      onChangeSoundSettings(nextSettings);
+    } else {
+      saveStoredSoundSettings(null, nextSettings);
+    }
+    if (nextEnabled && nextVolume > 0) {
+      playClassroomChime('test', nextVolume);
     }
   };
 
@@ -161,9 +179,9 @@ export default function LivePeriodTracker({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isFullscreen, setFullscreen]);
 
-  // Trigger 5-minute warning chime and end-of-period chime when chimeEnabled is true
+  // Trigger end-of-period chime when chimeEnabled is true
   useEffect(() => {
-    if (!chimeEnabled || !clockState || clockState.phase !== 'in_period') return;
+    if (!chimeEnabled || soundVolume <= 0 || !clockState || clockState.phase !== 'in_period') return;
 
     const hasSpan = Boolean(clockState.multiSpanTiming && clockState.multiSpanTiming.span > 1);
     const rem = hasSpan && useMultiSpanMode ? clockState.multiSpanTiming.remaining : clockState.remaining;
@@ -173,23 +191,15 @@ export default function LivePeriodTracker({
 
     if (!rem) return;
 
-    // 5 minutes remaining (5m 00s)
-    if (rem.minutes === 5 && rem.seconds === 0) {
-      const key = `warn-${pLabel}-5m`;
-      if (lastChimeKeyRef.current !== key) {
-        lastChimeKeyRef.current = key;
-        playClassroomChime('warning');
-      }
-    }
     // End of period (0m 01s)
     if (rem.minutes === 0 && rem.seconds === 1) {
       const key = `end-${pLabel}-0m`;
       if (lastChimeKeyRef.current !== key) {
         lastChimeKeyRef.current = key;
-        playClassroomChime('end');
+        playClassroomChime('end', soundVolume);
       }
     }
-  }, [chimeEnabled, clockState, useMultiSpanMode]);
+  }, [chimeEnabled, soundVolume, clockState, useMultiSpanMode]);
 
   if (!clockState) return null;
 
@@ -741,12 +751,12 @@ export default function LivePeriodTracker({
                     ? 'bg-indigo-600/80 hover:bg-indigo-500 text-white border-indigo-400/50 shadow-md shadow-indigo-500/20'
                     : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700'
                 }`}
-                title="เตือนด้วยเสียงกระดิ่งเมื่อเหลือ 5 นาทีสุดท้ายและเมื่อหมดเวลาคาบ"
+                title="เตือนด้วยเสียงกระดิ่งเมื่อหมดเวลาคาบเรียน (ตั้งค่าระดับเสียงได้ในเมนูตั้งค่า)"
               >
                 {chimeEnabled ? (
                   <>
                     <BellRing className="w-4 h-4 text-amber-300" />
-                    <span>กระดิ่งเตือน: เปิด</span>
+                    <span>กระดิ่งเตือน: เปิด ({soundVolume}%)</span>
                   </>
                 ) : (
                   <>
