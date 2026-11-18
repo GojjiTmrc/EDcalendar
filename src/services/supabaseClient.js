@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { verifyAccountPassword, withHashedPassword } from '../utils/passwordHash';
 
 const STORAGE_URL_KEY = 'edcalendar_custom_supabase_url';
 const STORAGE_KEY_KEY = 'edcalendar_custom_supabase_anon_key';
@@ -164,8 +165,12 @@ function normalizeAccountRecord(acc) {
   const email = String(acc.email).trim();
   const username = getAccountUsername(acc);
   const docId = emailToAccountDocId(email);
+  const { password: legacyPassword, ...rest } = acc;
+  // Once a hash exists, never keep the plain password around
+  const passwordFields = rest.passwordHash ? {} : legacyPassword ? { password: legacyPassword } : {};
   return {
-    ...acc,
+    ...rest,
+    ...passwordFields,
     id: acc.id || `user-${docId}`,
     email,
     username,
@@ -197,6 +202,8 @@ function parseCloudAccountFields(f) {
     email,
     username,
     password: f.password?.stringValue || '',
+    passwordHash: f.passwordHash?.stringValue || '',
+    passwordSalt: f.passwordSalt?.stringValue || '',
     name: f.name?.stringValue || username || fallbackUsername,
     teacherName: f.teacherName?.stringValue || '',
     schoolName: f.schoolName?.stringValue || '',
@@ -262,8 +269,12 @@ async function fetchCloudAccount(identifier, timeoutMs = 2500) {
 }
 
 async function saveCloudAccount(account, timeoutMs = 3000) {
-  const normalized = normalizeAccountRecord(account);
-  if (!normalized || !normalized.email) return;
+  const normalizedRaw = normalizeAccountRecord(account);
+  if (!normalizedRaw || !normalizedRaw.email) return;
+  // Never send a plain-text password to the cloud: hash legacy ones first
+  const normalized = normalizedRaw.passwordHash
+    ? normalizedRaw
+    : normalizeAccountRecord(await withHashedPassword(normalizedRaw));
 
   const emailDocId = emailToAccountDocId(normalized.email);
   const usernameDocId = emailToAccountDocId(normalized.username);
@@ -274,7 +285,8 @@ async function saveCloudAccount(account, timeoutMs = 3000) {
       id: { stringValue: String(normalized.id || `user-${emailDocId}`) },
       email: { stringValue: String(normalized.email).trim() },
       username: { stringValue: String(normalized.username).trim() },
-      password: { stringValue: String(normalized.password || '') },
+      passwordHash: { stringValue: String(normalized.passwordHash || '') },
+      passwordSalt: { stringValue: String(normalized.passwordSalt || '') },
       name: { stringValue: String(normalized.name || normalized.username) },
       teacherName: { stringValue: String(normalized.teacherName || '') },
       schoolName: { stringValue: String(normalized.schoolName || '') },
@@ -308,25 +320,6 @@ async function saveCloudAccount(account, timeoutMs = 3000) {
 const LOCAL_ACCOUNTS_KEY = 'edcalendar_local_accounts_v1';
 const LOCAL_SESSION_KEY = 'edcalendar_local_session_v1';
 
-const DEFAULT_ACCOUNTS = [
-  {
-    id: 'user-godgittipong127',
-    email: 'godgittipong127@gmail.com',
-    username: 'godgittipong127',
-    password: 'Godtmrc000',
-    name: 'ครูกิตติพงษ์ (Gojji)',
-    createdAt: '2026-10-19T00:00:00.000Z',
-  },
-  {
-    id: 'user-tlegx2gmailcom',
-    email: 'tlegx2@gmail.com',
-    username: 'tlegx2',
-    password: '450450450.',
-    name: 'tlegx2',
-    createdAt: '2026-10-19T05:07:07.560Z',
-  },
-];
-
 const localAuthListeners = new Set();
 
 function notifyAuthListeners(user) {
@@ -340,15 +333,11 @@ function notifyAuthListeners(user) {
 }
 
 export function getLocalAccounts() {
-  if (typeof window === 'undefined') return [...DEFAULT_ACCOUNTS];
+  if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(LOCAL_ACCOUNTS_KEY);
     const stored = raw ? JSON.parse(raw) : [];
     const map = new Map();
-    DEFAULT_ACCOUNTS.forEach((acc) => {
-      const norm = normalizeAccountRecord(acc);
-      if (norm) map.set(norm.email.toLowerCase(), norm);
-    });
     if (Array.isArray(stored)) {
       stored.forEach((acc) => {
         if (acc && acc.email && acc.email.toLowerCase() !== 'godgiitpong127@gmail.com') {
@@ -367,7 +356,7 @@ export function getLocalAccounts() {
     localStorage.setItem(LOCAL_ACCOUNTS_KEY, JSON.stringify(merged));
     return merged;
   } catch {
-    return [...DEFAULT_ACCOUNTS];
+    return [];
   }
 }
 
@@ -521,6 +510,14 @@ export function subscribeAuthChanges(callback) {
   };
 }
 
+// Migrates an account that still stores a plain-text password to salt + hash after a successful login
+async function upgradeLegacyPassword(acc, password) {
+  if (acc.passwordHash) return acc;
+  const upgraded = normalizeAccountRecord(await withHashedPassword(acc, password));
+  upsertLocalAccount(upgraded);
+  return upgraded;
+}
+
 // Auth helper functions
 export async function signInWithEmail(identifier, password) {
   const cleanIdentifier = (identifier || '').trim().toLowerCase();
@@ -534,9 +531,10 @@ export async function signInWithEmail(identifier, password) {
   const cloudAcc = await fetchCloudAccount(cleanIdentifier, 2500);
   if (cloudAcc) {
     upsertLocalAccount(cloudAcc);
-    if (cloudAcc.password === password || cloudAcc.password === cleanPassword) {
-      const sessionUser = buildSessionUser(cloudAcc);
-      saveCloudAccount(cloudAcc);
+    if (await verifyAccountPassword(cloudAcc, password, cleanPassword)) {
+      const upgraded = await upgradeLegacyPassword(cloudAcc, password);
+      const sessionUser = buildSessionUser(upgraded);
+      saveCloudAccount(upgraded);
       setLocalSession(sessionUser);
       return { user: sessionUser, session: { user: sessionUser } };
     }
@@ -547,10 +545,11 @@ export async function signInWithEmail(identifier, password) {
   const matched = accounts.find((acc) => matchesAccountIdentifier(acc, cleanIdentifier));
 
   if (matched) {
-    if (matched.password === password || matched.password === cleanPassword) {
-      const sessionUser = buildSessionUser(matched);
+    if (await verifyAccountPassword(matched, password, cleanPassword)) {
+      const upgraded = await upgradeLegacyPassword(matched, password);
+      const sessionUser = buildSessionUser(upgraded);
       // Ensure account & username index are synced to cloud registry
-      saveCloudAccount(matched);
+      saveCloudAccount(upgraded);
       setLocalSession(sessionUser);
       return { user: sessionUser, session: { user: sessionUser } };
     } else {
@@ -634,14 +633,18 @@ export async function signUpWithEmail(email, password, username = '') {
     throw new Error('ชื่อผู้ใช้นี้ (Username) มีผู้ใช้งานแล้ว กรุณาตั้งชื่อผู้ใช้อื่น');
   }
 
-  const newAccount = normalizeAccountRecord({
-    id: `user-${cleanEmail.replace(/[^a-z0-9]/g, '')}`,
-    email: rawEmail,
-    username: rawUsername,
-    password,
-    name: rawUsername,
-    createdAt: new Date().toISOString(),
-  });
+  const newAccount = normalizeAccountRecord(
+    await withHashedPassword(
+      {
+        id: `user-${cleanEmail.replace(/[^a-z0-9]/g, '')}`,
+        email: rawEmail,
+        username: rawUsername,
+        name: rawUsername,
+        createdAt: new Date().toISOString(),
+      },
+      password
+    )
+  );
 
   upsertLocalAccount(newAccount);
   await saveCloudAccount(newAccount);
@@ -684,7 +687,7 @@ export async function resetPasswordForEmail(identifier, newPassword = '') {
   const idx = accounts.findIndex((acc) => matchesAccountIdentifier(acc, cleanIdentifier));
 
   if (idx >= 0 && newPassword) {
-    accounts[idx].password = newPassword;
+    accounts[idx] = normalizeAccountRecord(await withHashedPassword(accounts[idx], newPassword));
     saveLocalAccounts(accounts);
     await saveCloudAccount(accounts[idx]);
     return { updated: true };
@@ -757,16 +760,23 @@ export async function updateAccountProfile({
   const existing = currentIdx >= 0 ? accounts[currentIdx] : { id: userId, email };
   const oldUsername = getAccountUsername(existing);
 
-  const updatedAccount = normalizeAccountRecord({
-    ...existing,
-    username: rawUsername,
-    name: String(displayName || rawUsername).trim(),
-    teacherName: teacherName !== undefined ? String(teacherName).trim() : existing.teacherName || '',
-    schoolName: schoolName !== undefined ? String(schoolName).trim() : existing.schoolName || '',
-    academicRole: academicRole !== undefined ? String(academicRole).trim() : existing.academicRole || '',
-    password: newPassword ? newPassword : existing.password,
-    updatedAt: new Date().toISOString(),
-  });
+  const updatedAccount = normalizeAccountRecord(
+    await withHashedPassword(
+      {
+        ...existing,
+        username: rawUsername,
+        name: String(displayName || rawUsername).trim(),
+        teacherName:
+          teacherName !== undefined ? String(teacherName).trim() : existing.teacherName || '',
+        schoolName: schoolName !== undefined ? String(schoolName).trim() : existing.schoolName || '',
+        academicRole:
+          academicRole !== undefined ? String(academicRole).trim() : existing.academicRole || '',
+        updatedAt: new Date().toISOString(),
+      },
+      // New password if given; otherwise keep existing hash, or hash a legacy plain password
+      newPassword || (existing.passwordHash ? null : existing.password)
+    )
+  );
 
   if (currentIdx >= 0) {
     accounts[currentIdx] = updatedAccount;

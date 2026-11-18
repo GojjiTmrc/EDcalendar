@@ -356,7 +356,7 @@ export function useBrowserFullscreen() {
 
 /**
  * Synthesizes pleasant classroom chimes using Web Audio API (no external audio files needed)
- * @param {'test' | 'end'} type
+ * @param {'test' | 'end' | 'activity_end'} type
  * @param {number} volumePercent - Volume level from 0 to 100 (default 80)
  */
 export function playClassroomChime(type = 'test', volumePercent = 80) {
@@ -402,6 +402,12 @@ export function playClassroomChime(type = 'test', volumePercent = 80) {
       playNote(523.25, 0.7, 0.4, 0.2);
       playNote(783.99, 1.05, 0.4, 0.2);
       playNote(1046.5, 1.4, 0.9, 0.22);
+    } else if (type === 'activity_end') {
+      // Cheerful 4-note ascending fanfare chime for activity timer completion (C5 -> E5 -> G5 -> C6)
+      playNote(523.25, 0, 0.22, 0.18);
+      playNote(659.25, 0.15, 0.22, 0.19);
+      playNote(783.99, 0.3, 0.25, 0.2);
+      playNote(1046.5, 0.48, 0.75, 0.23);
     }
 
     setTimeout(() => {

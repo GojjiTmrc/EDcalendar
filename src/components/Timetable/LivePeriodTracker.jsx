@@ -20,6 +20,15 @@ import {
   Layers,
   Monitor,
   Eye,
+  Play,
+  Pause,
+  RotateCcw,
+  Plus,
+  X,
+  Edit3,
+  Pin,
+  Check,
+  Trash2,
 } from 'lucide-react';
 import {
   useScreenWakeLock,
@@ -33,6 +42,13 @@ import {
   getStoredDimmerLevel,
   saveStoredDimmerLevel,
 } from '../../utils/wakeLockUtils';
+
+const NOTICE_PRESETS = [
+  '📝 ทำแบบฝึกหัดในสมุด/ใบงาน ส่งก่อนหมดคาบ',
+  '🤫 กำลังสอบย่อย 15 นาที — ห้ามใช้เครื่องคิดเลขและงดใช้เสียง',
+  '👥 กิจกรรมกลุ่ม — อภิปรายและสรุปผลร่วมกัน',
+  '📖 เปิดหนังสือเรียน หน้า ... ข้อ ...',
+];
 
 export default function LivePeriodTracker({
   clockState,
@@ -58,11 +74,154 @@ export default function LivePeriodTracker({
   const [pixelShift, setPixelShift] = useState({ x: 0, y: 0 });
   const lastChimeKeyRef = useRef('');
 
+  // Classroom Mini-Toolkit states:
+  // 1. Classroom Notice Board
+  const [noticeText, setNoticeText] = useState(() => {
+    try {
+      return localStorage.getItem('edcalendar_classroom_notice') || '';
+    } catch {
+      return '';
+    }
+  });
+  const [showNotice, setShowNotice] = useState(() => {
+    try {
+      return localStorage.getItem('edcalendar_classroom_notice_show') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [isEditingNotice, setIsEditingNotice] = useState(false);
+  const [tempNoticeInput, setTempNoticeInput] = useState('');
+
+  // 2. Mini Activity Timer
+  const [showTimerPanel, setShowTimerPanel] = useState(false);
+  const [timerInitialSec, setTimerInitialSec] = useState(600); // 10 minutes default
+  const [timerSeconds, setTimerSeconds] = useState(600);
+  const [isTimerRunning, setIsTimerRunning] = useState(false);
+  const [isTimerFinished, setIsTimerFinished] = useState(false);
+  const [showCustomTimerModal, setShowCustomTimerModal] = useState(false);
+  const [customMinutesInput, setCustomMinutesInput] = useState('10');
+
+  // Effective sound settings (must be declared before the effects that read them)
   const effectiveSound = propSoundSettings
     ? normalizeSoundSettings(propSoundSettings)
     : internalSoundSettings;
   const chimeEnabled = effectiveSound.enabled && effectiveSound.volume > 0;
   const soundVolume = effectiveSound.volume;
+
+  // Activity Timer tick effect (pure countdown only)
+  useEffect(() => {
+    if (!isTimerRunning) return;
+    const interval = setInterval(() => {
+      setTimerSeconds((prev) => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isTimerRunning]);
+
+  // Activity Timer completion: stop, mark finished and play the chime once
+  useEffect(() => {
+    if (!isTimerRunning || timerSeconds > 0) return;
+    setIsTimerRunning(false);
+    setIsTimerFinished(true);
+    if (chimeEnabled && soundVolume > 0) {
+      playClassroomChime('activity_end', soundVolume);
+    }
+  }, [isTimerRunning, timerSeconds, chimeEnabled, soundVolume]);
+
+  const formatTimerDisplay = (totalSec) => {
+    const mins = Math.floor(Math.max(0, totalSec) / 60);
+    const secs = Math.max(0, totalSec) % 60;
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  };
+
+  const handleStartTimer = () => {
+    if (isTimerFinished || timerSeconds <= 0) {
+      setTimerSeconds(timerInitialSec > 0 ? timerInitialSec : 600);
+      setIsTimerFinished(false);
+    }
+    setIsTimerRunning(true);
+  };
+
+  const handlePauseTimer = () => {
+    setIsTimerRunning(false);
+  };
+
+  const handleResetTimer = () => {
+    setIsTimerRunning(false);
+    setIsTimerFinished(false);
+    setTimerSeconds(timerInitialSec);
+  };
+
+  const handleAddMinutes = (minsToAdd = 1) => {
+    const addedSec = minsToAdd * 60;
+    setTimerSeconds((prev) => prev + addedSec);
+    setTimerInitialSec((prev) => prev + addedSec);
+    if (isTimerFinished) {
+      setIsTimerFinished(false);
+      setIsTimerRunning(true);
+    }
+  };
+
+  const handleSetTimerPreset = (minutes) => {
+    const sec = minutes * 60;
+    setTimerInitialSec(sec);
+    setTimerSeconds(sec);
+    setIsTimerFinished(false);
+    setIsTimerRunning(false);
+  };
+
+  const handleApplyCustomMinutes = (e) => {
+    e?.preventDefault();
+    const num = parseInt(customMinutesInput, 10);
+    if (!isNaN(num) && num > 0) {
+      handleSetTimerPreset(num);
+      setShowCustomTimerModal(false);
+    }
+  };
+
+  // Notice Board Handlers
+  const handleOpenNoticeEditor = () => {
+    setTempNoticeInput(noticeText);
+    setIsEditingNotice(true);
+  };
+
+  const handleSaveNotice = () => {
+    const trimmed = tempNoticeInput.trim();
+    setNoticeText(trimmed);
+    try {
+      localStorage.setItem('edcalendar_classroom_notice', trimmed);
+    } catch {}
+    if (trimmed) {
+      setShowNotice(true);
+      try {
+        localStorage.setItem('edcalendar_classroom_notice_show', 'true');
+      } catch {}
+    }
+    setIsEditingNotice(false);
+  };
+
+  const handleToggleNotice = () => {
+    if (!noticeText.trim()) {
+      handleOpenNoticeEditor();
+      return;
+    }
+    const next = !showNotice;
+    setShowNotice(next);
+    try {
+      localStorage.setItem('edcalendar_classroom_notice_show', String(next));
+    } catch {}
+  };
+
+  const handleClearNotice = () => {
+    setTempNoticeInput('');
+    setNoticeText('');
+    setShowNotice(false);
+    try {
+      localStorage.removeItem('edcalendar_classroom_notice');
+      localStorage.setItem('edcalendar_classroom_notice_show', 'false');
+    } catch {}
+    setIsEditingNotice(false);
+  };
 
   const isFullscreen = isFullscreenOpen !== undefined ? isFullscreenOpen : internalFullscreen;
   const setFullscreen = setIsFullscreenOpen || setInternalFullscreen;
@@ -167,17 +326,25 @@ export default function LivePeriodTracker({
     return () => clearInterval(interval);
   }, [isFullscreen, effectiveWakeEnabled]);
 
-  // Close fullscreen on Escape key
+  // Close fullscreen on Escape key (or close active modals first)
   useEffect(() => {
     if (!isFullscreen) return;
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
+        if (isEditingNotice) {
+          setIsEditingNotice(false);
+          return;
+        }
+        if (showCustomTimerModal) {
+          setShowCustomTimerModal(false);
+          return;
+        }
         setFullscreen(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isFullscreen, setFullscreen]);
+  }, [isFullscreen, setFullscreen, isEditingNotice, showCustomTimerModal]);
 
   // Trigger end-of-period chime when chimeEnabled is true
   useEffect(() => {
@@ -356,7 +523,7 @@ export default function LivePeriodTracker({
             {/* Keep Screen Awake Button on Main Timetable Banner */}
             <button
               type="button"
-              onClick={handleToggleBannerWake}
+              aria-label="Toggle Wake Lock" 
               className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold border transition-all ${
                 bannerWakeEnabled
                   ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
@@ -783,7 +950,74 @@ export default function LivePeriodTracker({
                 </span>
               </button>
 
-              {/* 4. Multi-Span Period Toggle */}
+              {/* 4. Mini Activity Timer Toggle */}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowTimerPanel((prev) => !prev);
+                  if (!showTimerPanel && !isTimerRunning && timerSeconds === 0) {
+                    setTimerSeconds(timerInitialSec);
+                  }
+                }}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold border transition-all ${
+                  isTimerRunning
+                    ? 'bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-400 shadow-md shadow-indigo-500/30'
+                    : isTimerFinished
+                    ? 'bg-rose-600 hover:bg-rose-500 text-white border-rose-400 animate-pulse shadow-md shadow-rose-500/30'
+                    : showTimerPanel
+                    ? 'bg-slate-800 text-indigo-300 border-indigo-500/50'
+                    : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700'
+                }`}
+                title={
+                  isTimerRunning
+                    ? `กำลังจับเวลากิจกรรม: เหลือ ${formatTimerDisplay(timerSeconds)} (คลิกเพื่อดู/ซ่อน)`
+                    : isTimerFinished
+                    ? 'หมดเวลากิจกรรมแล้ว! (คลิกเพื่อดู)'
+                    : 'เปิดตัวจับเวลากิจกรรมย่อย (ควิซ / ทำงานกลุ่ม)'
+                }
+              >
+                <Timer
+                  className={`w-4 h-4 ${
+                    isTimerRunning
+                      ? 'animate-spin text-white'
+                      : isTimerFinished
+                      ? 'text-amber-300'
+                      : 'text-indigo-400'
+                  }`}
+                  style={isTimerRunning ? { animationDuration: '6s' } : undefined}
+                />
+                <span>
+                  {isTimerRunning
+                    ? `กิจกรรม: ${formatTimerDisplay(timerSeconds)}`
+                    : isTimerFinished
+                    ? 'หมดเวลา!'
+                    : showTimerPanel
+                    ? 'ซ่อนจับเวลา'
+                    : 'จับเวลากิจกรรม'}
+                </span>
+                {isTimerRunning && <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />}
+              </button>
+
+              {/* 5. Notice Board Toggle */}
+              <button
+                type="button"
+                onClick={handleToggleNotice}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold border transition-all ${
+                  showNotice && noticeText.trim()
+                    ? 'bg-amber-600/90 hover:bg-amber-500 text-white border-amber-400/60 shadow-md shadow-amber-500/20'
+                    : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700'
+                }`}
+                title={
+                  showNotice && noticeText.trim()
+                    ? 'กำลังแสดงป้ายประกาศหน้าห้อง (คลิกเพื่อซ่อน/เปิดแก้ไข)'
+                    : 'ขึ้นป้ายประกาศคำสั่ง/โจทย์หน้าชั้นเรียน'
+                }
+              >
+                <Pin className={`w-4 h-4 ${showNotice && noticeText.trim() ? 'text-amber-200' : 'text-amber-400'}`} />
+                <span>{showNotice && noticeText.trim() ? 'ป้ายประกาศ: เปิด' : 'ป้ายประกาศ'}</span>
+              </button>
+
+              {/* 6. Multi-Span Period Toggle */}
               {hasMultiSpan && (
                 <button
                   type="button"
@@ -794,7 +1028,7 @@ export default function LivePeriodTracker({
                 </button>
               )}
 
-              {/* 5. True Browser Fullscreen (F11) Toggle */}
+              {/* 7. True Browser Fullscreen (F11) Toggle */}
               <button
                 type="button"
                 onClick={toggleBrowserFullscreen}
@@ -831,29 +1065,69 @@ export default function LivePeriodTracker({
 
           {/* Center Giant Display (with subtle pixel shift when Awake is active to protect OLED/Projectors) */}
           <div
-            className="my-auto max-w-6xl w-full mx-auto space-y-8 text-center transition-transform duration-1000"
+            className="my-auto max-w-6xl w-full mx-auto space-y-5 sm:space-y-6 text-center transition-transform duration-1000"
             style={{ transform: `translate(${pixelShift.x}px, ${pixelShift.y}px)` }}
           >
             {/* Period & Subject Pill */}
-            <div className="space-y-3">
-              <div className="inline-flex items-center gap-2.5 px-5 py-2 rounded-full bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 text-lg sm:text-xl font-bold">
+            <div className="space-y-2">
+              <div className="inline-flex items-center gap-2.5 px-5 py-1.5 rounded-full bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 text-base sm:text-lg font-bold">
                 <span className={`w-3 h-3 rounded-full ${styles.dotColor}`} />
                 <span>{getCurrentPeriodTitle()}</span>
               </div>
 
               {currentSlotInfo && (
-                <div className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">
+                <div className="text-xl sm:text-3xl font-extrabold text-white tracking-tight">
                   {currentSlotInfo.subject.code} {currentSlotInfo.subject.name}
-                  <span className="text-indigo-400 font-semibold text-xl sm:text-2xl ml-3">
+                  <span className="text-indigo-400 font-semibold text-lg sm:text-xl ml-3">
                     ({currentSlotInfo.subject.gradeGroup || '-'} • ห้อง {currentSlotInfo.room})
                   </span>
                 </div>
               )}
             </div>
 
+            {/* 1. SMART NOTICE BANNER (Only when enabled and has content) */}
+            {showNotice && noticeText.trim() && (
+              <div className="mx-auto max-w-4xl px-4 py-2 sm:py-2.5 rounded-2xl bg-slate-900/90 border border-amber-500/40 shadow-lg shadow-amber-500/10 backdrop-blur-md flex items-center justify-between gap-3 text-amber-200 animate-in fade-in slide-in-from-top-2 duration-200">
+                <div className="flex items-center gap-2.5 text-left flex-1 min-w-0">
+                  <span className="p-1 rounded-lg bg-amber-500/20 text-amber-400 shrink-0">
+                    <Pin className="w-4 h-4" />
+                  </span>
+                  <span className="text-sm sm:text-lg md:text-xl font-bold tracking-wide break-words line-clamp-2">
+                    {noticeText}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTempNoticeInput(noticeText);
+                      setIsEditingNotice(true);
+                    }}
+                    className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-colors"
+                    title="แก้ไขข้อความประกาศ"
+                  >
+                    <Edit3 className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowNotice(false);
+                      try {
+                        localStorage.setItem('edcalendar_classroom_notice_show', 'false');
+                      } catch {}
+                    }}
+                    className="p-1.5 rounded-lg hover:bg-rose-500/20 text-slate-400 hover:text-rose-300 transition-colors"
+                    title="ซ่อนป้ายประกาศ"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Huge Real-Time Clock */}
-            <div className="py-4">
-              <div className="text-sm uppercase tracking-widest text-slate-400 font-semibold mb-2">
+            <div className="py-1 sm:py-2">
+              <div className="text-xs uppercase tracking-widest text-slate-400 font-semibold mb-1">
                 เวลาปัจจุบัน (Real-Time)
               </div>
               <div className="text-6xl sm:text-8xl md:text-9xl font-black font-mono tabular-nums tracking-tight text-white drop-shadow">
@@ -861,54 +1135,178 @@ export default function LivePeriodTracker({
               </div>
             </div>
 
+            {/* 2. COMPACT ACTIVITY TIMER CAPSULE (When showTimerPanel is true or timer is running/finished) */}
+            {(showTimerPanel || isTimerRunning || isTimerFinished) && (
+              <div
+                className={`mx-auto max-w-2xl px-4 py-2 sm:py-2.5 rounded-2xl border transition-all duration-300 flex flex-wrap items-center justify-between gap-3 shadow-xl backdrop-blur-md animate-in fade-in slide-in-from-bottom-2 ${
+                  isTimerFinished
+                    ? 'bg-rose-950/90 border-rose-500 text-rose-200 shadow-rose-500/30 animate-pulse ring-2 ring-rose-500/50'
+                    : isTimerRunning
+                    ? 'bg-slate-900/95 border-indigo-500/60 text-white shadow-indigo-500/15'
+                    : 'bg-slate-900/85 border-slate-700/80 text-slate-200'
+                }`}
+              >
+                {/* Left: Timer Icon + Countdown */}
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                      isTimerFinished ? 'bg-rose-600 text-white' : 'bg-indigo-600/80 text-indigo-200'
+                    }`}
+                  >
+                    <Timer className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-400 text-left">
+                      {isTimerFinished
+                        ? '🔔 หมดเวลากิจกรรมแล้ว!'
+                        : isTimerRunning
+                        ? '⏱️ กำลังจับเวลากิจกรรม'
+                        : '⏸️ พักจับเวลากิจกรรม'}
+                    </div>
+                    <div
+                      className={`text-2xl sm:text-3xl font-black font-mono tabular-nums leading-none text-left ${
+                        isTimerFinished ? 'text-rose-400' : 'text-indigo-300'
+                      }`}
+                    >
+                      {formatTimerDisplay(timerSeconds)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Center: Presets (when paused or reset) */}
+                {!isTimerRunning && (
+                  <div className="flex items-center gap-1 bg-slate-800/90 p-1 rounded-xl border border-slate-700/60 text-xs">
+                    {[3, 5, 10, 15, 20].map((mins) => (
+                      <button
+                        key={mins}
+                        type="button"
+                        onClick={() => handleSetTimerPreset(mins)}
+                        className={`px-2 py-0.5 rounded-lg font-semibold transition-colors ${
+                          timerInitialSec === mins * 60 && !isTimerFinished
+                            ? 'bg-indigo-600 text-white shadow-2xs'
+                            : 'text-slate-300 hover:text-white hover:bg-slate-700'
+                        }`}
+                      >
+                        {mins}น.
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustomMinutesInput(String(Math.round(timerInitialSec / 60) || 10));
+                        setShowCustomTimerModal(true);
+                      }}
+                      className="px-2 py-0.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
+                      title="กำหนดนาทีเอง"
+                    >
+                      ...
+                    </button>
+                  </div>
+                )}
+
+                {/* Right: Controls */}
+                <div className="flex items-center gap-1.5 ml-auto">
+                  {isTimerRunning ? (
+                    <button
+                      type="button"
+                      onClick={handlePauseTimer}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold shadow-xs transition-colors"
+                      title="หยุดชั่วคราว"
+                    >
+                      <Pause className="w-3.5 h-3.5" />
+                      <span>หยุด</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleStartTimer}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-xs transition-colors"
+                      title="เริ่มจับเวลา"
+                    >
+                      <Play className="w-3.5 h-3.5" />
+                      <span>{isTimerFinished ? 'เริ่มใหม่' : 'เริ่ม'}</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => handleAddMinutes(1)}
+                    className="flex items-center gap-0.5 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-indigo-300 hover:text-white border border-slate-700 text-xs font-bold transition-colors"
+                    title="ต่อเวลาเพิ่ม 1 นาที"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>1น.</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleResetTimer}
+                    className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors"
+                    title="รีเซ็ตเวลา"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowTimerPanel(false)}
+                    className="p-1.5 rounded-xl bg-slate-800 hover:bg-rose-950/60 text-slate-400 hover:text-rose-300 border border-slate-700 transition-colors ml-1"
+                    title="ซ่อนแถบจับเวลา (เวลายังคงเดินต่อเนื่องที่ปุ่มด้านบน)"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Two Giant Sub-Cards: Elapsed vs Remaining */}
             {(phase === 'in_period' || phase === 'lunch' || phase === 'between_periods') && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl mx-auto">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 max-w-5xl mx-auto">
                 {/* Sub 1: Elapsed */}
-                <div className="p-6 sm:p-8 rounded-3xl bg-slate-900/90 border border-slate-800 text-left space-y-2">
-                  <div className="flex items-center justify-between text-slate-400 text-sm font-semibold">
+                <div className="p-5 sm:p-7 rounded-3xl bg-slate-900/90 border border-slate-800 text-left space-y-2">
+                  <div className="flex items-center justify-between text-slate-400 text-xs sm:text-sm font-semibold">
                     <span className="flex items-center gap-2">
-                      <Timer className="w-5 h-5 text-indigo-400" />
+                      <Timer className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-400" />
                       เวลาที่เริ่มคาบไปแล้ว
                     </span>
                     <span className="font-mono">เริ่ม {hasMultiSpan && useMultiSpanMode ? multiSpanTiming.startTime : currentPeriod?.startTime} น.</span>
                   </div>
-                  <div className="text-3xl sm:text-5xl font-black tabular-nums text-white pt-2">
+                  <div className="text-2xl sm:text-4xl md:text-5xl font-black tabular-nums text-white pt-1">
                     <span className="text-indigo-400 font-mono">{activeElapsed.minutes}</span>{' '}
-                    <span className="text-xl sm:text-2xl font-bold text-slate-300">นาที</span>{' '}
+                    <span className="text-lg sm:text-2xl font-bold text-slate-300">นาที</span>{' '}
                     <span className="text-indigo-400 font-mono">{String(activeElapsed.seconds).padStart(2, '0')}</span>{' '}
-                    <span className="text-xl sm:text-2xl font-bold text-slate-300">วินาที</span>
+                    <span className="text-lg sm:text-2xl font-bold text-slate-300">วินาที</span>
                   </div>
                 </div>
 
                 {/* Sub 2: Remaining */}
-                <div className={`p-6 sm:p-8 rounded-3xl border text-left space-y-2 ${
+                <div className={`p-5 sm:p-7 rounded-3xl border text-left space-y-2 ${
                   urgency === 'critical'
                     ? 'bg-rose-950/40 border-rose-500/60'
                     : urgency === 'warning'
                     ? 'bg-amber-950/40 border-amber-500/60'
                     : 'bg-slate-900/90 border-slate-800'
                 }`}>
-                  <div className="flex items-center justify-between text-slate-400 text-sm font-semibold">
+                  <div className="flex items-center justify-between text-slate-400 text-xs sm:text-sm font-semibold">
                     <span className="flex items-center gap-2">
-                      <Hourglass className="w-5 h-5 text-emerald-400" />
+                      <Hourglass className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400" />
                       เวลาที่เหลือในคาบนี้
                     </span>
                     <span className="font-mono">หมดเวลา {hasMultiSpan && useMultiSpanMode ? multiSpanTiming.endTime : currentPeriod?.endTime} น.</span>
                   </div>
-                  <div className="text-3xl sm:text-5xl font-black tabular-nums text-white pt-2">
+                  <div className="text-2xl sm:text-4xl md:text-5xl font-black tabular-nums text-white pt-1">
                     <span className={`font-mono ${
                       urgency === 'critical' ? 'text-rose-400' : urgency === 'warning' ? 'text-amber-400' : 'text-emerald-400'
                     }`}>
                       {activeRemaining.minutes}
                     </span>{' '}
-                    <span className="text-xl sm:text-2xl font-bold text-slate-300">นาที</span>{' '}
+                    <span className="text-lg sm:text-2xl font-bold text-slate-300">นาที</span>{' '}
                     <span className={`font-mono ${
                       urgency === 'critical' ? 'text-rose-400' : urgency === 'warning' ? 'text-amber-400' : 'text-emerald-400'
                     }`}>
                       {String(activeRemaining.seconds).padStart(2, '0')}
                     </span>{' '}
-                    <span className="text-xl sm:text-2xl font-bold text-slate-300">วินาที</span>
+                    <span className="text-lg sm:text-2xl font-bold text-slate-300">วินาที</span>
                   </div>
                 </div>
               </div>
@@ -917,7 +1315,7 @@ export default function LivePeriodTracker({
             {/* Giant Progress Bar */}
             {(phase === 'in_period' || phase === 'lunch') && (
               <div className="max-w-5xl mx-auto space-y-2">
-                <div className="w-full h-4 bg-slate-800 rounded-full overflow-hidden p-0.5">
+                <div className="w-full h-3 sm:h-4 bg-slate-800 rounded-full overflow-hidden p-0.5">
                   <div
                     className={`h-full bg-gradient-to-r ${styles.barBg} rounded-full transition-all duration-500`}
                     style={{ width: `${Math.min(100, Math.max(2, activeProgress))}%` }}
@@ -933,7 +1331,7 @@ export default function LivePeriodTracker({
           </div>
 
           {/* Bottom Next Class & Wake Lock Status Info */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs sm:text-sm text-slate-400 border-t border-slate-800 pt-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs sm:text-sm text-slate-400 border-t border-slate-800 pt-3">
             <div className="flex items-center gap-3 flex-wrap">
               <span>{styles.statusLabel}</span>
               <span className="text-slate-600">•</span>
@@ -949,6 +1347,146 @@ export default function LivePeriodTracker({
               </div>
             )}
           </div>
+
+          {/* NOTICE BOARD EDITOR MODAL */}
+          {isEditingNotice && (
+            <div className="fixed inset-0 z-60 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+              <div className="bg-slate-900 border border-slate-700 w-full max-w-lg rounded-3xl p-5 sm:p-6 shadow-2xl text-white space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
+                      <Pin className="w-4 h-4" />
+                    </div>
+                    <h3 className="text-base font-bold text-white">ป้ายประกาศหน้าชั้นเรียน</h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingNotice(false)}
+                    className="p-1 rounded-lg text-slate-400 hover:text-white"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs text-slate-400 font-medium">
+                    พิมพ์ข้อความคำสั่ง โจทย์ หรือหน้าหนังสือ (จะฉายขึ้นจอโปรเจกเตอร์):
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={tempNoticeInput}
+                    onChange={(e) => setTempNoticeInput(e.target.value)}
+                    placeholder="เช่น ทำแบบฝึกหัดท้ายบทที่ 2 หน้า 45 ข้อ 1-5 ส่งก่อนหมดคาบ 5 นาที"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white placeholder-slate-500 text-sm focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                    autoFocus
+                  />
+                </div>
+
+                {/* Quick presets */}
+                <div className="space-y-1.5">
+                  <div className="text-[11px] font-semibold text-slate-400">ข้อความด่วนยอดนิยม:</div>
+                  <div className="flex flex-col gap-1.5 max-h-40 overflow-y-auto pr-1">
+                    {NOTICE_PRESETS.map((preset, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setTempNoticeInput(preset)}
+                        className="text-left text-xs px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-amber-300 border border-slate-700 transition-colors"
+                      >
+                        {preset}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-2 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={handleClearNotice}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold text-rose-400 hover:bg-rose-950/40 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>ล้างข้อความ</span>
+                  </button>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingNotice(false)}
+                      className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-colors"
+                    >
+                      ยกเลิก
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveNotice}
+                      className="flex items-center gap-1 px-4 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition-colors shadow-md shadow-amber-600/20"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>บันทึกและขึ้นจอ</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* CUSTOM TIMER MINUTES MODAL */}
+          {showCustomTimerModal && (
+            <div className="fixed inset-0 z-60 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+              <div className="bg-slate-900 border border-slate-700 w-full max-w-xs rounded-3xl p-5 shadow-2xl text-white space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Timer className="w-4 h-4 text-indigo-400" />
+                    <span>ตั้งเวลากิจกรรมเอง</span>
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setShowCustomTimerModal(false)}
+                    className="p-1 rounded-lg text-slate-400 hover:text-white"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleApplyCustomMinutes} className="space-y-4">
+                  <div>
+                    <label className="text-xs text-slate-400 block mb-1">
+                      ระบุจำนวนนาที (1 - 120 นาที):
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min="1"
+                        max="120"
+                        value={customMinutesInput}
+                        onChange={(e) => setCustomMinutesInput(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-lg font-mono font-bold focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                        autoFocus
+                      />
+                      <span className="text-sm text-slate-400 font-medium">นาที</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setShowCustomTimerModal(false)}
+                      className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium"
+                    >
+                      ยกเลิก
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold"
+                    >
+                      ตกลง
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </>
