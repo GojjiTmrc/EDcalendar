@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Clock,
   Timer,
@@ -325,6 +326,16 @@ export default function LivePeriodTracker({
     }, 45000);
     return () => clearInterval(interval);
   }, [isFullscreen, effectiveWakeEnabled]);
+
+  // Lock page scroll behind the classroom clock overlay
+  useEffect(() => {
+    if (!isFullscreen) return undefined;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [isFullscreen]);
 
   // Close fullscreen on Escape key (or close active modals first)
   useEffect(() => {
@@ -846,9 +857,10 @@ export default function LivePeriodTracker({
       </div>
 
       {/* FULLSCREEN CLASSROOM MODE OVERLAY */}
-      {isFullscreen && (
+      {isFullscreen && createPortal(
         <div
-          className={`fixed inset-0 z-50 bg-slate-950 text-white flex flex-col justify-between p-5 sm:p-10 animate-in fade-in duration-200 transition-opacity ${
+          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, height: '100dvh', overflowY: 'auto' }}
+          className={`z-[100] bg-slate-950 text-white flex flex-col justify-between p-5 sm:p-10 animate-in fade-in duration-200 transition-opacity ${
             dimmerLevel === 'oled'
               ? 'brightness-50 contrast-95'
               : dimmerLevel === 'comfort'
@@ -1487,7 +1499,8 @@ export default function LivePeriodTracker({
               </div>
             </div>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

@@ -21,6 +21,7 @@ import {
 import { formatThaiDate } from '../../utils/dateUtils';
 import { SESSION_STATUS, getColorById } from '../../utils/colors';
 import { useScreenWakeLock } from '../../utils/wakeLockUtils';
+import MoodPickerModal from './MoodPickerModal';
 
 const QUICK_POST_LOG_PHRASES = [
   'นักเรียนเข้าใจเนื้อหาและให้ความร่วมมือในกิจกรรมดีมาก',
@@ -55,6 +56,7 @@ export default function SessionDetailModal({
   const [newPrepText, setNewPrepText] = useState('');
   const [notes, setNotes] = useState('');
   const [postTeachingLog, setPostTeachingLog] = useState('');
+  const [moodPrompt, setMoodPrompt] = useState(null); // { payload } while asking for period mood
 
   // For custom one-off makeup session
   const [isCustom, setIsCustom] = useState(false);
@@ -175,6 +177,10 @@ export default function SessionDetailModal({
         postTeachingLogUpdatedAt: postLogTimestamp,
       };
       onSaveOverride(customPayload);
+      if (trimmedPostLog) {
+        setMoodPrompt({ payload: customPayload });
+        return;
+      }
       onClose();
       return;
     }
@@ -197,6 +203,24 @@ export default function SessionDetailModal({
     };
 
     onSaveOverride(payload);
+    if (trimmedPostLog) {
+      // Ask for the mood of this period after the post-teaching log was saved
+      setMoodPrompt({ payload });
+      return;
+    }
+    onClose();
+  };
+
+  const handleFinishMood = (value) => {
+    const pending = moodPrompt;
+    setMoodPrompt(null);
+    if (value && pending?.payload) {
+      onSaveOverride({
+        ...pending.payload,
+        postTeachingMood: value,
+        postTeachingMoodUpdatedAt: new Date().toISOString(),
+      });
+    }
     onClose();
   };
 
@@ -886,6 +910,16 @@ export default function SessionDetailModal({
 
         </form>
       </div>
+
+      <MoodPickerModal
+        isOpen={Boolean(moodPrompt)}
+        currentMood={moodPrompt?.payload?.postTeachingMood ?? session?.postTeachingMood}
+        subjectLabel={
+          selectedSubject ? `${selectedSubject.name} (${selectedSubject.code})` : ''
+        }
+        onSelect={(value) => handleFinishMood(value)}
+        onSkip={() => handleFinishMood(null)}
+      />
     </div>
   );
 }

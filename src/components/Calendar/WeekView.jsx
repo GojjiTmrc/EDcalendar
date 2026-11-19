@@ -2,6 +2,7 @@ import React from 'react';
 import { Plus, Clock, MapPin, AlertCircle, Ban, BookOpen, Flag, BookCheck } from 'lucide-react';
 import { getSchoolWeekDates, formatThaiDate, toDateString } from '../../utils/dateUtils';
 import { SESSION_STATUS, getColorById } from '../../utils/colors';
+import { getMoodLevel } from '../../utils/moodConfig';
 
 export default function WeekView({
   currentDate,
@@ -227,6 +228,11 @@ export default function WeekView({
                           >
                             <BookCheck className="w-3 h-3 shrink-0" />
                             <span>{sess.postTeachingLog ? '✓ ดู/แก้ไขบันทึกหลังสอน' : 'บันทึกหลังการสอน'}</span>
+                            {getMoodLevel(sess.postTeachingMood) && (
+                              <span title={`อารมณ์ของคาบ: ${getMoodLevel(sess.postTeachingMood).label}`}>
+                                {getMoodLevel(sess.postTeachingMood).emoji}
+                              </span>
+                            )}
                           </button>
                         </div>
                       </div>

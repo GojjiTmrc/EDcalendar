@@ -2,6 +2,7 @@ import React from 'react';
 import { Plus, AlertCircle, Ban, Clock, Flag } from 'lucide-react';
 import { getSchoolWeekMonthGrid, toDateString, countDaysInRange } from '../../utils/dateUtils';
 import { getColorById } from '../../utils/colors';
+import { getMoodLevel } from '../../utils/moodConfig';
 
 const SCHOOL_WEEKDAY_NAMES = [
   { short: 'จ.', full: 'วันจันทร์', color: 'text-amber-600 dark:text-amber-400' },
@@ -205,6 +206,7 @@ export default function MonthView({
                         }`}
                       >
                         {sess.postTeachingLog ? '✍️ บันทึกแล้ว' : '✍️ บันทึก'}
+                        {getMoodLevel(sess.postTeachingMood)?.emoji}
                       </button>
                     </div>
                   );

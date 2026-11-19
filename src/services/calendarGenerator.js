@@ -79,6 +79,7 @@ export function getSessionsForDate(dateStr, semester, slots, subjects, overrides
           notes: override.notes || '',
           postTeachingLog: override.postTeachingLog || '',
           postTeachingLogUpdatedAt: override.postTeachingLogUpdatedAt || null,
+          postTeachingMood: override.postTeachingMood || null,
           isOverridden: true,
           isCustomSession: false,
         });
@@ -182,6 +183,7 @@ export function getSessionsForDate(dateStr, semester, slots, subjects, overrides
       notes: custom.notes || '',
       postTeachingLog: custom.postTeachingLog || '',
       postTeachingLogUpdatedAt: custom.postTeachingLogUpdatedAt || null,
+      postTeachingMood: custom.postTeachingMood || null,
       isOverridden: true,
       isCustomSession: true,
     });
@@ -301,6 +303,7 @@ export function getPostTeachingLogsByDay(semester, slots = [], subjects = [], ov
           notes: ovr.notes || '',
           postTeachingLog: ovr.postTeachingLog || '',
           postTeachingLogUpdatedAt: ovr.postTeachingLogUpdatedAt || null,
+          postTeachingMood: ovr.postTeachingMood || null,
           isOverridden: true,
           isCustomSession: Boolean(ovr.isCustomSession),
         };

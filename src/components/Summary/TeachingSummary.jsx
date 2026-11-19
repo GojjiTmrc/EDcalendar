@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { calculateTeachingSummary, getTermScopeInfo } from '../../services/summaryService';
 import SummaryPrintView from './SummaryPrintView';
+import SessionDetailModal from '../Calendar/SessionDetailModal';
 import { formatThaiDate, parseDateString, THAI_MONTHS_FULL } from '../../utils/dateUtils';
 import { getColorById } from '../../utils/colors';
 
@@ -29,7 +30,15 @@ export default function TeachingSummary({
   confirmTeachingMode = false,
   onChangeConfirmTeachingMode,
   onSaveOverride,
+  shortNotes = [],
+  onResetOverride,
+  onDeleteCustomSession,
+  onOpenAddShortNote,
+  onOpenEditShortNote,
+  onToggleCompleteShortNote,
 }) {
+  // Session picked from the pending-confirmation list (opens the post-teaching log popup)
+  const [selectedPendingSession, setSelectedPendingSession] = useState(null);
   const [scopeType, setScopeType] = useState('semester'); // 'semester' | 'todate' | 'month'
   const [pendingSubjectFilter, setPendingSubjectFilter] = useState('all');
   const [isPendingExpanded, setIsPendingExpanded] = useState(false);
@@ -577,7 +586,19 @@ export default function TeachingSummary({
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {filteredPendingLogs.map((sess) => (
-                    <tr key={`${sess.date}-${sess.id}`} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40">
+                    <tr
+                      key={`${sess.date}-${sess.id}`}
+                      onClick={() => setSelectedPendingSession(sess)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setSelectedPendingSession(sess);
+                        }
+                      }}
+                      tabIndex={0}
+                      title="คลิกเพื่อเปิดป๊อปอัพเขียนบันทึกหลังการสอนของคาบนี้"
+                      className="cursor-pointer hover:bg-emerald-50/70 dark:hover:bg-slate-800/60 focus:outline-none focus:bg-emerald-50/70 dark:focus:bg-slate-800/60"
+                    >
                       <td className="py-2.5 px-4 font-medium text-slate-700 dark:text-slate-300 whitespace-nowrap">
                         {formatThaiDate(sess.date, 'short')}
                       </td>
@@ -596,7 +617,10 @@ export default function TeachingSummary({
                         {onSaveOverride && (
                           <button
                             type="button"
-                            onClick={() => handleQuickConfirmSession(sess)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleQuickConfirmSession(sess);
+                            }}
                             className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-semibold shadow-2xs transition-colors"
                           >
                             <Check className="w-3 h-3" />
@@ -754,6 +778,24 @@ export default function TeachingSummary({
         summaryData={summary}
         semester={semester}
         confirmTeachingMode={confirmTeachingMode}
+      />
+
+      {/* Post-teaching log popup for a session picked from the pending-confirmation list */}
+      <SessionDetailModal
+        isOpen={Boolean(selectedPendingSession)}
+        onClose={() => setSelectedPendingSession(null)}
+        session={selectedPendingSession}
+        dateStr={selectedPendingSession?.date}
+        initialTab="postLog"
+        subjects={subjects}
+        semesterId={semester?.id}
+        shortNotes={shortNotes}
+        onSaveOverride={onSaveOverride}
+        onResetOverride={onResetOverride}
+        onDeleteCustomSession={onDeleteCustomSession}
+        onOpenAddShortNote={onOpenAddShortNote}
+        onOpenEditShortNote={onOpenEditShortNote}
+        onToggleCompleteShortNote={onToggleCompleteShortNote}
       />
 
     </div>

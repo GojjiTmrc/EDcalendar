@@ -719,6 +719,12 @@ export default function App() {
                 confirmTeachingMode={confirmTeachingMode}
                 onChangeConfirmTeachingMode={handleChangeConfirmTeachingMode}
                 onSaveOverride={handleSaveOverride}
+                shortNotes={data.shortNotes || []}
+                onResetOverride={handleResetOverride}
+                onDeleteCustomSession={handleDeleteCustomSession}
+                onOpenAddShortNote={handleOpenAddShortNote}
+                onOpenEditShortNote={handleOpenEditShortNote}
+                onToggleCompleteShortNote={handleToggleCompleteShortNote}
               />
             )}
           </>

@@ -2,6 +2,7 @@ import React from 'react';
 import { Plus, Clock, MapPin, Users, BookOpen, AlertCircle, CheckCircle2, Edit3, Flag, FileText, Check, Target, Package, BookCheck } from 'lucide-react';
 import { formatThaiDate } from '../../utils/dateUtils';
 import { SESSION_STATUS, getColorById } from '../../utils/colors';
+import { getMoodLevel } from '../../utils/moodConfig';
 
 export default function DayView({
   dateStr,
@@ -267,6 +268,11 @@ export default function DayView({
                     >
                       <BookCheck className="w-3.5 h-3.5" />
                       <span>{sess.postTeachingLog ? '✓ บันทึกหลังการสอน' : 'บันทึกหลังการสอน'}</span>
+                      {getMoodLevel(sess.postTeachingMood) && (
+                        <span title={`อารมณ์ของคาบ: ${getMoodLevel(sess.postTeachingMood).label}`}>
+                          {getMoodLevel(sess.postTeachingMood).emoji}
+                        </span>
+                      )}
                     </button>
 
                     <button
