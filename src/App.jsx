@@ -16,6 +16,8 @@ import SettingsModal, {
 import ShortNoteModal from './components/ShortNotes/ShortNoteModal';
 import DueAlertBanner from './components/ShortNotes/DueAlertBanner';
 import AuthScreen from './components/Auth/AuthScreen';
+import RosterManagerModal from './components/Roster/RosterManagerModal';
+import { useRosters } from './utils/rosterStorage';
 import { Loader2, GraduationCap, Plus } from 'lucide-react';
 import { getActiveSession, subscribeAuthChanges, signOut } from './services/supabaseClient';
 import { getStoredPeriods } from './utils/periodConfig';
@@ -86,6 +88,17 @@ export default function App() {
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isFullscreenClockOpen, setIsFullscreenClockOpen] = useState(false);
+
+  // Student rosters (stored only in this browser, per account; never synced to the cloud)
+  const { rosters, saveRoster, deleteRoster } = useRosters(user?.id || null);
+  const [isRosterModalOpen, setIsRosterModalOpen] = useState(false);
+  const [rosterInitialGroup, setRosterInitialGroup] = useState('');
+
+  const handleOpenRosterManager = (classGroup = '') => {
+    setRosterInitialGroup(classGroup || '');
+    setIsFullscreenClockOpen(false);
+    setIsRosterModalOpen(true);
+  };
 
   // Short Notes & Notifications state
   const [isShortNoteModalOpen, setIsShortNoteModalOpen] = useState(false);
@@ -607,6 +620,7 @@ export default function App() {
         semesters={data.semesters || []}
         activeSemesterId={data.activeSemesterId}
         onOpenSubjects={() => setIsSubjectModalOpen(true)}
+        onOpenRoster={() => handleOpenRosterManager('')}
         onOpenSemesters={() => setIsSemesterModalOpen(true)}
         onOpenAccount={() => setIsAccountModalOpen(true)}
         onOpenSettings={() => setIsSettingsModalOpen(true)}
@@ -686,9 +700,11 @@ export default function App() {
                 setIsFullscreenClockOpen={setIsFullscreenClockOpen}
                 soundSettings={soundSettings}
                 onChangeSoundSettings={handleChangeSoundSettings}
+                rosters={rosters}
+                onOpenRosterManager={handleOpenRosterManager}
               />
             )}
-            
+
             {activeTab === 'calendar' && (
               <TeachingCalendar
                 semester={activeSemester}
@@ -789,6 +805,16 @@ export default function App() {
         slots={data.slots}
         onSaveSubject={handleSaveSubject}
         onDeleteSubject={handleDeleteSubject}
+      />
+
+      <RosterManagerModal
+        isOpen={isRosterModalOpen}
+        onClose={() => setIsRosterModalOpen(false)}
+        subjects={data.subjects || []}
+        rosters={rosters}
+        onSaveRoster={saveRoster}
+        onDeleteRoster={deleteRoster}
+        initialClassGroup={rosterInitialGroup}
       />
 
       <SemesterModal

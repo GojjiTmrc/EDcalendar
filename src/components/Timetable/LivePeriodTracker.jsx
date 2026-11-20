@@ -30,7 +30,9 @@ import {
   Pin,
   Check,
   Trash2,
+  Dices,
 } from 'lucide-react';
+import ClassroomGamesPanel from '../Classroom/ClassroomGamesPanel';
 import {
   useScreenWakeLock,
   useBrowserFullscreen,
@@ -58,6 +60,8 @@ export default function LivePeriodTracker({
   setIsFullscreenOpen,
   soundSettings: propSoundSettings,
   onChangeSoundSettings,
+  rosters = {},
+  onOpenRosterManager,
 }) {
   const [useMultiSpanMode, setUseMultiSpanMode] = useState(false);
   const [internalFullscreen, setInternalFullscreen] = useState(false);
@@ -101,6 +105,7 @@ export default function LivePeriodTracker({
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [isTimerFinished, setIsTimerFinished] = useState(false);
   const [showCustomTimerModal, setShowCustomTimerModal] = useState(false);
+  const [showGamesPanel, setShowGamesPanel] = useState(false);
   const [customMinutesInput, setCustomMinutesInput] = useState('10');
 
   // Effective sound settings (must be declared before the effects that read them)
@@ -141,6 +146,16 @@ export default function LivePeriodTracker({
       setIsTimerFinished(false);
     }
     setIsTimerRunning(true);
+  };
+
+  // Start the activity timer from the classroom games (e.g. after picking a student)
+  const handleStartTimerWithSeconds = (seconds) => {
+    const sec = Math.max(1, Math.floor(Number(seconds) || 60));
+    setTimerInitialSec(sec);
+    setTimerSeconds(sec);
+    setIsTimerFinished(false);
+    setIsTimerRunning(true);
+    setShowTimerPanel(true);
   };
 
   const handlePauseTimer = () => {
@@ -284,6 +299,7 @@ export default function LivePeriodTracker({
   };
 
   const handleCloseClassroomFullscreen = () => {
+    setShowGamesPanel(false);
     setFullscreen(false);
     exitBrowserFullscreen();
   };
@@ -342,6 +358,10 @@ export default function LivePeriodTracker({
     if (!isFullscreen) return;
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
+        if (showGamesPanel) {
+          setShowGamesPanel(false);
+          return;
+        }
         if (isEditingNotice) {
           setIsEditingNotice(false);
           return;
@@ -355,7 +375,7 @@ export default function LivePeriodTracker({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isFullscreen, setFullscreen, isEditingNotice, showCustomTimerModal]);
+  }, [isFullscreen, setFullscreen, isEditingNotice, showCustomTimerModal, showGamesPanel]);
 
   // Trigger end-of-period chime when chimeEnabled is true
   useEffect(() => {
@@ -1029,6 +1049,17 @@ export default function LivePeriodTracker({
                 <span>{showNotice && noticeText.trim() ? 'ป้ายประกาศ: เปิด' : 'ป้ายประกาศ'}</span>
               </button>
 
+              {/* 5b. Classroom Games (random wheel / groups / order draw) */}
+              <button
+                type="button"
+                onClick={() => setShowGamesPanel(true)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold border transition-all bg-fuchsia-700/80 hover:bg-fuchsia-600 text-white border-fuchsia-400/50 shadow-md shadow-fuchsia-500/20"
+                title="วงล้อสุ่มชื่อ แบ่งกลุ่ม จับฉลากลำดับ"
+              >
+                <Dices className="w-4 h-4 text-fuchsia-100" />
+                <span>สุ่มชื่อ / แบ่งกลุ่ม</span>
+              </button>
+
               {/* 6. Multi-Span Period Toggle */}
               {hasMultiSpan && (
                 <button
@@ -1359,6 +1390,21 @@ export default function LivePeriodTracker({
               </div>
             )}
           </div>
+
+          {/* CLASSROOM GAMES PANEL */}
+          {showGamesPanel && (
+            <ClassroomGamesPanel
+              defaultClassGroup={currentSlotInfo?.subject?.gradeGroup || ''}
+              rosters={rosters}
+              volume={chimeEnabled ? soundVolume : 0}
+              onClose={() => setShowGamesPanel(false)}
+              onStartTimer={handleStartTimerWithSeconds}
+              onOpenRosterManager={(group) => {
+                setShowGamesPanel(false);
+                onOpenRosterManager?.(group);
+              }}
+            />
+          )}
 
           {/* NOTICE BOARD EDITOR MODAL */}
           {isEditingNotice && (
