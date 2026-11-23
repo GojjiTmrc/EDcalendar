@@ -22,6 +22,7 @@ export default function RosterManagerModal({
   onSaveRoster,
   onDeleteRoster,
   initialClassGroup = '',
+  syncStatus = 'idle',
 }) {
   const [pickedGroup, setPickedGroup] = useState('');
   const [extraGroups, setExtraGroups] = useState([]);
@@ -134,7 +135,7 @@ export default function RosterManagerModal({
                 <h3 className="font-bold text-lg text-slate-900 dark:text-white">รายชื่อนักเรียน</h3>
                 <p className="flex items-center gap-1.5 text-[11px] text-emerald-700 dark:text-emerald-400 mt-0.5">
                   <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-                  เก็บไว้ในเครื่องนี้เท่านั้น ไม่ถูกส่งขึ้นคลาวด์ (ใช้กับวงล้อสุ่มและแบ่งกลุ่มในโหมดนาฬิกาเต็มจอ)
+                  {syncStatus === 'synced' ? 'ซิงก์ขึ้นคลาวด์แล้ว ใช้ได้ทุกเครื่องที่ล็อกอินบัญชีนี้' : syncStatus === 'syncing' ? 'กำลังซิงก์กับคลาวด์...' : syncStatus === 'offline' ? 'ซิงก์คลาวด์ไม่สำเร็จ (เก็บในเครื่องไว้ก่อน จะลองใหม่อัตโนมัติ)' : 'เก็บในเครื่อง และซิงก์ขึ้นคลาวด์เมื่อล็อกอิน'}
                 </p>
               </div>
             </div>

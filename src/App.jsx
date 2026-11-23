@@ -90,7 +90,7 @@ export default function App() {
   const [isFullscreenClockOpen, setIsFullscreenClockOpen] = useState(false);
 
   // Student rosters (stored only in this browser, per account; never synced to the cloud)
-  const { rosters, saveRoster, deleteRoster } = useRosters(user?.id || null);
+  const { rosters, saveRoster, deleteRoster, syncStatus: rosterSyncStatus } = useRosters(user?.id || null);
   const [isRosterModalOpen, setIsRosterModalOpen] = useState(false);
   const [rosterInitialGroup, setRosterInitialGroup] = useState('');
 
@@ -815,6 +815,7 @@ export default function App() {
         onSaveRoster={saveRoster}
         onDeleteRoster={deleteRoster}
         initialClassGroup={rosterInitialGroup}
+        syncStatus={rosterSyncStatus}
       />
 
       <SemesterModal
