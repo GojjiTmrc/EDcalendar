@@ -367,11 +367,29 @@ export default function LivePeriodTracker({
           return;
         }
         setFullscreen(false);
+        return;
+      }
+      // Space = start/pause the activity timer, G = open the games panel (not while typing or in a dialog)
+      const tag = e.target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'BUTTON' || e.target?.isContentEditable) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (showGamesPanel || isEditingNotice || showCustomTimerModal) return;
+      if (e.key === ' ') {
+        e.preventDefault();
+        if (isTimerRunning) {
+          handlePauseTimer();
+        } else {
+          handleStartTimer();
+          setShowTimerPanel(true);
+        }
+      } else if (e.key.toLowerCase() === 'g') {
+        e.preventDefault();
+        setShowGamesPanel(true);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isFullscreen, setFullscreen, isEditingNotice, showCustomTimerModal, showGamesPanel]);
+  });
 
   // Trigger end-of-period chime when chimeEnabled is true
   useEffect(() => {

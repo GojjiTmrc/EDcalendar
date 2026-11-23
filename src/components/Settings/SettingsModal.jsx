@@ -36,6 +36,8 @@ import {
   playClassroomChime,
 } from '../../utils/wakeLockUtils';
 import { exportBackupJSON, importBackupJSON } from '../../services/storage';
+import { listAutoBackups, getAutoBackupData } from '../../services/autoBackup';
+import { formatThaiDate } from '../../utils/dateUtils';
 
 export const DEFAULT_TAB_STORAGE_KEY = 'edcalendar_default_tab';
 export const CONFIRM_TEACHING_STORAGE_KEY = 'edcalendar_confirm_teaching_mode';
@@ -43,7 +45,7 @@ export const CONFIRM_TEACHING_STORAGE_KEY = 'edcalendar_confirm_teaching_mode';
 export function getStoredDefaultTab() {
   try {
     const saved = localStorage.getItem(DEFAULT_TAB_STORAGE_KEY);
-    if (saved === 'timetable' || saved === 'calendar' || saved === 'summary') {
+    if (saved === 'today' || saved === 'timetable' || saved === 'calendar' || saved === 'summary') {
       return saved;
     }
   } catch {
@@ -82,6 +84,7 @@ export default function SettingsModal({
   periods,
   onSavePeriods,
   allData = {},
+  autoBackupKey = null,
   onDataImported,
   onResetData,
   onForceSyncCloud,
@@ -101,6 +104,12 @@ export default function SettingsModal({
   const [statusBanner, setStatusBanner] = useState(null); // { success: boolean, message: string }
   const [isSyncingNow, setIsSyncingNow] = useState(false);
   const fileInputRef = useRef(null);
+  const [autoBackups, setAutoBackups] = useState([]);
+  const refreshAutoBackups = () => setAutoBackups(listAutoBackups(autoBackupKey));
+  useSyncOnChange([isOpen, autoBackupKey], () => {
+    if (isOpen) refreshAutoBackups();
+  });
+
 
   useSyncOnChange([isOpen], () => {
     if (isOpen) {
@@ -247,6 +256,22 @@ export default function SettingsModal({
     };
     reader.readAsText(file);
     e.target.value = '';
+  };
+
+  const handleRestoreAutoBackup = (item) => {
+    const snapshot = getAutoBackupData(autoBackupKey, item.id);
+    if (!snapshot) {
+      setStatusBanner({ success: false, message: 'ไม่พบข้อมูลสำรองชุดนี้' });
+      return;
+    }
+    if (
+      confirm(
+        'กู้คืนข้อมูลจากสำเนาอัตโนมัติชุดนี้? ข้อมูลปัจจุบันจะถูกแทนที่ (แนะนำให้ดาวน์โหลดไฟล์สำรองปัจจุบันไว้ก่อน)'
+      )
+    ) {
+      if (onDataImported) onDataImported(snapshot);
+      setStatusBanner({ success: true, message: 'กู้คืนข้อมูลจากสำเนาอัตโนมัติเรียบร้อยแล้ว' });
+    }
   };
 
   const handleResetAllData = () => {
@@ -405,8 +430,9 @@ export default function SettingsModal({
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
                   เลือกหน้าที่ต้องการให้ระบบเปิดขึ้นมาเป็นหน้าแรกทุกครั้งที่เข้าใช้งาน
                 </p>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {[
+                    { id: 'today', label: 'วันนี้ (แดชบอร์ด)' },
                     { id: 'timetable', label: 'ตารางสอนประจำสัปดาห์' },
                     { id: 'calendar', label: 'ปฏิทินการสอน' },
                     { id: 'summary', label: 'สรุปผลการสอน' },
@@ -845,6 +871,52 @@ export default function SettingsModal({
                     <span>นำเข้าข้อมูลจากไฟล์ (Import)</span>
                   </button>
                 </div>
+              </div>
+
+              {/* Automatic local safety copies */}
+              <div className="space-y-2.5">
+                <label className="block font-bold text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  สำเนาสำรองอัตโนมัติ (เก็บในเครื่องนี้ 7 วันล่าสุด)
+                </label>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  ระบบเก็บสำเนาไว้เองวันละครั้งและทุก 15 นาทีที่มีการแก้ไข ใช้กู้คืนเมื่อลบหรือแก้ผิดจนซิงก์ทับไปแล้ว
+                </p>
+                {autoBackups.length === 0 ? (
+                  <div className="text-xs text-slate-500 dark:text-slate-400 p-3 rounded-xl border border-dashed border-slate-300 dark:border-slate-700">
+                    ยังไม่มีสำเนาอัตโนมัติ (จะสร้างให้เมื่อมีข้อมูลในระบบ)
+                  </div>
+                ) : (
+                  <ul className="space-y-1.5">
+                    {autoBackups.map((item) => (
+                      <li
+                        key={item.id}
+                        className="flex items-center justify-between gap-3 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs"
+                      >
+                        <div className="min-w-0">
+                          <div className="font-semibold text-slate-700 dark:text-slate-200">
+                            {item.kind === 'latest'
+                              ? 'ล่าสุด'
+                              : `ต้นวันที่ ${formatThaiDate(item.date, 'short')}`}
+                            <span className="font-normal text-slate-500 dark:text-slate-400">
+                              {' '}
+                              · {new Date(item.savedAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}
+                            </span>
+                          </div>
+                          <div className="text-slate-500 dark:text-slate-400">
+                            {item.counts.subjects} วิชา · {item.counts.slots} คาบ · {item.counts.logs} บันทึกหลังสอน · {item.counts.notes} บันทึกสั้น
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRestoreAutoBackup(item)}
+                          className="shrink-0 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold"
+                        >
+                          กู้คืน
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
 
               {/* Danger Zone: Reset Data */}

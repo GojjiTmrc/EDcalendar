@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Printer, CheckCircle2, Clock, Ban, AlertCircle, BookOpen, TrendingUp, Search, ChevronDown, BookCheck, Check } from 'lucide-react';
 import { calculateTeachingSummary, getTermScopeInfo } from '../../services/summaryService';
 import SummaryPrintView from './SummaryPrintView';
+import InsightsPanel from './InsightsPanel';
 import SessionDetailModal from '../Calendar/SessionDetailModal';
 import { formatThaiDate, parseDateString, THAI_MONTHS_FULL } from '../../utils/dateUtils';
 import { getColorById } from '../../utils/colors';
@@ -343,6 +344,15 @@ export default function TeachingSummary({
         </div>
 
       </div>
+
+      {/* Progress per subject + mood overview */}
+      <InsightsPanel
+        semester={semester}
+        slots={slots}
+        subjects={subjects}
+        overrides={overrides}
+        multiDayEvents={multiDayEvents}
+      />
 
       {/* Subject Breakdown Table Section */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">

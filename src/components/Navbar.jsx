@@ -19,6 +19,7 @@ import {
   MapPin,
   ArrowRight,
   Users,
+  LayoutDashboard,
 } from 'lucide-react';
 import NotificationDropdown from './ShortNotes/NotificationDropdown';
 import { toDateString } from '../utils/dateUtils';
@@ -148,37 +149,52 @@ export default function Navbar({
           {/* Center Navigation Tabs */}
           <nav className="hidden md:flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl border border-slate-200/80 dark:border-slate-700">
             <button
+              onClick={() => setActiveTab('today')}
+              title="วันนี้ (ปุ่มลัด 1)"
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
+                activeTab === 'today'
+                  ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-white shadow-sm'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <LayoutDashboard className="w-4 h-4" />
+              <span>วันนี้</span>
+            </button>
+            <button
               onClick={() => setActiveTab('timetable')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
                 activeTab === 'timetable'
                   ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-white shadow-sm'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <Clock className="w-4 h-4" />
-              <span>ตารางสอนประจำสัปดาห์</span>
+              <span className="hidden xl:inline">ตารางสอนประจำสัปดาห์</span>
+              <span className="xl:hidden">ตารางสอน</span>
             </button>
             <button
               onClick={() => setActiveTab('calendar')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-all ${
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
                 activeTab === 'calendar'
                   ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-white shadow-sm'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <CalendarIcon className="w-4 h-4" />
-              <span>ปฏิทินการสอน</span>
+              <span className="hidden xl:inline">ปฏิทินการสอน</span>
+              <span className="xl:hidden">ปฏิทิน</span>
             </button>
             <button
               onClick={() => setActiveTab('summary')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-all ${
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
                 activeTab === 'summary'
                   ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-white shadow-sm'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <BarChart3 className="w-4 h-4" />
-              <span>สรุปผลการสอน</span>
+              <span className="hidden xl:inline">สรุปผลการสอน</span>
+              <span className="xl:hidden">สรุปผล</span>
             </button>
           </nav>
 
@@ -575,6 +591,18 @@ export default function Navbar({
 
       {/* Mobile Bottom Navigation Bar (md:hidden) */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 shadow-lg px-2 py-1.5 flex items-center justify-around no-print pb-safe">
+        <button
+          onClick={() => setActiveTab('today')}
+          className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl transition-all ${
+            activeTab === 'today'
+              ? 'text-indigo-600 dark:text-indigo-400 font-semibold'
+              : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+          }`}
+        >
+          <LayoutDashboard className={`w-5 h-5 ${activeTab === 'today' ? 'stroke-[2.5]' : ''}`} />
+          <span className="text-[10px] mt-0.5">วันนี้</span>
+        </button>
+
         <button
           onClick={() => setActiveTab('timetable')}
           className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all ${

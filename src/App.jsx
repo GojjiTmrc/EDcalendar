@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Navbar from './components/Navbar';
 import TimetableGrid from './components/Timetable/TimetableGrid';
 import SlotModal from './components/Timetable/SlotModal';
@@ -17,6 +17,10 @@ import ShortNoteModal from './components/ShortNotes/ShortNoteModal';
 import DueAlertBanner from './components/ShortNotes/DueAlertBanner';
 import AuthScreen from './components/Auth/AuthScreen';
 import RosterManagerModal from './components/Roster/RosterManagerModal';
+import TodayDashboard from './components/Today/TodayDashboard';
+import UndoToast from './components/Common/UndoToast';
+import ShortcutsHelpModal from './components/Common/ShortcutsHelpModal';
+import { saveAutoBackup } from './services/autoBackup';
 import { useRosters } from './utils/rosterStorage';
 import { Loader2, GraduationCap, Plus } from 'lucide-react';
 import { getActiveSession, subscribeAuthChanges, signOut } from './services/supabaseClient';
@@ -53,7 +57,7 @@ export default function App() {
   const [data, setData] = useState(() => loadData());
   const [theme, setTheme] = useState(() => loadTheme());
   const [defaultTab, setDefaultTab] = useState(() => getStoredDefaultTab());
-  const [activeTab, setActiveTab] = useState(() => getStoredDefaultTab()); // 'timetable' | 'calendar' | 'summary'
+  const [activeTab, setActiveTab] = useState(() => getStoredDefaultTab()); // 'today' | 'timetable' | 'calendar' | 'summary'
   const [confirmTeachingMode, setConfirmTeachingMode] = useState(() => getStoredConfirmTeachingMode());
   const [periods, setPeriods] = useState(() => getStoredPeriods());
 
@@ -204,6 +208,23 @@ export default function App() {
     });
   };
 
+  // ------------------ Undo for destructive actions ------------------
+  const [undoToast, setUndoToast] = useState(null); // { id, label, snapshot }
+  const pushUndo = (label) => setUndoToast({ id: Date.now(), label, snapshot: data });
+  const handleUndo = () => {
+    if (!undoToast) return;
+    updateData(undoToast.snapshot);
+    setUndoToast(null);
+  };
+  const dismissUndo = useCallback(() => setUndoToast(null), []);
+
+  // ------------------ Automatic local safety copies ------------------
+  const autoBackupKey = user?.id || (isDemoMode ? 'demo' : null);
+  useEffect(() => {
+    if (authLoading || syncStatus === 'saving') return;
+    saveAutoBackup(autoBackupKey, data);
+  }, [data, autoBackupKey, authLoading, syncStatus]);
+
   const handleSignOut = async () => {
     try {
       await signOut();
@@ -257,6 +278,7 @@ export default function App() {
   };
 
   const handleDeleteSlot = (slotId) => {
+    pushUndo('ลบคาบสอนแล้ว');
     updateData((prev) => ({
       ...prev,
       slots: prev.slots.filter(s => s.id !== slotId),
@@ -288,6 +310,7 @@ export default function App() {
   };
 
   const handleResetOverride = (dateStr, slotId) => {
+    pushUndo('คืนค่าคาบนี้เป็นตารางปกติแล้ว');
     updateData((prev) => ({
       ...prev,
       overrides: prev.overrides.filter(
@@ -297,6 +320,7 @@ export default function App() {
   };
 
   const handleDeleteCustomSession = (customSessionId) => {
+    pushUndo('ลบคาบพิเศษแล้ว');
     updateData((prev) => ({
       ...prev,
       overrides: prev.overrides.filter(o => o.id !== customSessionId),
@@ -342,6 +366,7 @@ export default function App() {
   };
 
   const handleDeleteMultiDayEvent = (eventId) => {
+    pushUndo('ลบวันหยุด/กิจกรรมแล้ว');
     updateData((prev) => ({
       ...prev,
       multiDayEvents: (prev.multiDayEvents || []).filter(e => e.id !== eventId),
@@ -364,6 +389,7 @@ export default function App() {
   };
 
   const handleDeleteSubject = (subjectId) => {
+    pushUndo('ลบรายวิชาแล้ว');
     updateData((prev) => ({
       ...prev,
       subjects: prev.subjects.filter(s => s.id !== subjectId),
@@ -482,6 +508,7 @@ export default function App() {
   };
 
   const handleDeleteSemester = (semesterId) => {
+    pushUndo('ลบภาคเรียนแล้ว');
     updateData((prev) => {
       const newSemesters = prev.semesters.filter(s => s.id !== semesterId);
       return {
@@ -550,6 +577,7 @@ export default function App() {
   };
 
   const handleDeleteShortNote = (noteId) => {
+    pushUndo('ลบบันทึกสั้นแล้ว');
     updateData((prev) => ({
       ...prev,
       shortNotes: (prev.shortNotes || []).filter(n => n.id !== noteId),
@@ -596,6 +624,54 @@ export default function App() {
       return { ...prev, overrides: updatedOverrides };
     });
   };
+
+  // ------------------ Keyboard shortcuts ------------------
+  const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
+  const shortcutHandlerRef = useRef(null);
+  useEffect(() => {
+    shortcutHandlerRef.current = (e) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const t = e.target;
+      const tag = t?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t?.isContentEditable) return;
+      // Ignore while any modal/overlay is open (modals use fixed inset-0) or the fullscreen clock is shown
+      if (isFullscreenClockOpen || document.querySelector('.fixed.inset-0')) return;
+      if (!user && !isDemoMode) return;
+      const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      const go = (tab) => {
+        e.preventDefault();
+        setActiveTab(tab);
+      };
+      switch (key) {
+        case '1': return go('today');
+        case '2': return go('timetable');
+        case '3': return go('calendar');
+        case '4': return go('summary');
+        case 'n':
+          e.preventDefault();
+          return handleOpenAddShortNote();
+        case 'r':
+          e.preventDefault();
+          return handleOpenRosterManager('');
+        case 's':
+          e.preventDefault();
+          return setIsSubjectModalOpen(true);
+        case 'f':
+          e.preventDefault();
+          setActiveTab('timetable');
+          return setIsFullscreenClockOpen(true);
+        case '?':
+          e.preventDefault();
+          return setIsShortcutsOpen(true);
+        default:
+      }
+    };
+  });
+  useEffect(() => {
+    const onKey = (e) => shortcutHandlerRef.current?.(e);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   if (authLoading) {
     return (
@@ -686,6 +762,24 @@ export default function App() {
           </div>
         ) : (
           <>
+            {activeTab === 'today' && (
+              <TodayDashboard
+                semester={activeSemester}
+                slots={data.slots}
+                subjects={data.subjects}
+                overrides={data.overrides}
+                multiDayEvents={data.multiDayEvents || []}
+                shortNotes={data.shortNotes || []}
+                onSaveOverride={handleSaveOverride}
+                onResetOverride={handleResetOverride}
+                onDeleteCustomSession={handleDeleteCustomSession}
+                onOpenAddShortNote={handleOpenAddShortNote}
+                onOpenEditShortNote={handleOpenEditShortNote}
+                onToggleCompleteShortNote={handleToggleCompleteShortNote}
+                onGoTo={setActiveTab}
+              />
+            )}
+
             {activeTab === 'timetable' && (
               <TimetableGrid
                 slots={data.slots}
@@ -756,6 +850,12 @@ export default function App() {
             <span>ระบบจัดการตารางสอนและปฏิทินการสอนออนไลน์ (Cloud Sync)</span>
           </div>
           <div className="flex items-center gap-4">
+            <button
+              onClick={() => setIsShortcutsOpen(true)}
+              className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+            >
+              ปุ่มลัด (?)
+            </button>
             <button
               onClick={() => setIsSubjectModalOpen(true)}
               className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
@@ -857,7 +957,11 @@ export default function App() {
         onForceSyncCloud={handleForceSyncCloud}
         syncStatus={syncStatus}
         user={user}
+        autoBackupKey={autoBackupKey}
       />
+
+      <UndoToast toast={undoToast} onUndo={handleUndo} onDismiss={dismissUndo} />
+      <ShortcutsHelpModal isOpen={isShortcutsOpen} onClose={() => setIsShortcutsOpen(false)} />
 
       <ShortNoteModal
         isOpen={isShortNoteModalOpen}
