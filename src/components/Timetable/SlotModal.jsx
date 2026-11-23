@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { X, Trash2, Clock, MapPin, BookOpen, Calendar as CalIcon } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { useSyncOnChange } from '../../utils/useSyncOnChange';
+import { X, Trash2, Clock, MapPin, BookOpen } from 'lucide-react';
 import { SCHOOL_DAYS } from '../../utils/dateUtils';
 import { getColorById } from '../../utils/colors';
 import { DEFAULT_PERIODS } from '../../utils/periodConfig';
@@ -58,7 +59,7 @@ export default function SlotModal({
     };
   };
 
-  useEffect(() => {
+  useSyncOnChange([editingSlot, initialDayOfWeek, initialPeriodNumber, isOpen], () => {
     if (editingSlot) {
       setDayOfWeek(editingSlot.dayOfWeek);
       setSubjectId(editingSlot.subjectId);
@@ -88,7 +89,7 @@ export default function SlotModal({
       setEndTime(end);
       setRoomOverride('');
     }
-  }, [editingSlot, initialDayOfWeek, initialPeriodNumber, isOpen, availableSubjects]);
+  });
 
   if (!isOpen) return null;
 

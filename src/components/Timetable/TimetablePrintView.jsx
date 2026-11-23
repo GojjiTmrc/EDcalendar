@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { useSyncOnChange } from '../../utils/useSyncOnChange';
 import { X, Printer, Award } from 'lucide-react';
 import { SCHOOL_DAYS, timeToMinutes, formatThaiDate } from '../../utils/dateUtils';
 import {
@@ -21,14 +22,14 @@ export default function TimetablePrintView({
   const [docDate, setDocDate] = useState(() => formatThaiDate(new Date(), 'short'));
   const [signatures, setSignatures] = useState(() => getStoredSignatures());
 
-  useEffect(() => {
+  useSyncOnChange([isOpen], () => {
     if (isOpen) {
       setPeriods(getStoredPeriods());
       setSignatures(getStoredSignatures());
       setTeacherName(localStorage.getItem('edcalendar_teacher_name') || 'นายกิตติพงษ์ โพธิวาระ');
       setSchoolName(localStorage.getItem('edcalendar_school_name') || 'โรงเรียนสุมเส้าพิทยาคาร');
     }
-  }, [isOpen]);
+  });
 
   if (!isOpen) return null;
 
@@ -37,7 +38,6 @@ export default function TimetablePrintView({
   const displayDays = SCHOOL_DAYS;
 
   const teachingPeriods = periods.filter(p => !p.isLunch);
-  const lunchPeriod = periods.find(p => p.isLunch) || { label: 'พักเที่ยง', startTime: '12:00', endTime: '13:00' };
 
   const handlePrint = () => {
     localStorage.setItem('edcalendar_teacher_name', teacherName);

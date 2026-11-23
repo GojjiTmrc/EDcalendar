@@ -1,7 +1,7 @@
 import React from 'react';
-import { Plus, Clock, MapPin, AlertCircle, Ban, BookOpen, Flag, BookCheck } from 'lucide-react';
+import { Plus, Clock, Flag, BookCheck } from 'lucide-react';
 import { getSchoolWeekDates, formatThaiDate, toDateString } from '../../utils/dateUtils';
-import { SESSION_STATUS, getColorById } from '../../utils/colors';
+import { getColorById } from '../../utils/colors';
 import { getMoodLevel } from '../../utils/moodConfig';
 
 export default function WeekView({

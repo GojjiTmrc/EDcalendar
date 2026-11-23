@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Bell, AlertTriangle, Clock, Check, X, ArrowRight, Target, Package } from 'lucide-react';
+import { Bell, Check, X, ArrowRight } from 'lucide-react';
 import { toDateString } from '../../utils/dateUtils';
 
 export default function DueAlertBanner({
@@ -7,9 +7,7 @@ export default function DueAlertBanner({
   overrides = [],
   subjects = [],
   onOpenDropdown,
-  onOpenEdit,
   onToggleComplete,
-  onOpenSession,
 }) {
   const [isDismissed, setIsDismissed] = useState(false);
   const todayStr = toDateString(new Date());

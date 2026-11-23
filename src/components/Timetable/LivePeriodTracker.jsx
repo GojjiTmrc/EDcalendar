@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useSyncOnChange } from '../../utils/useSyncOnChange';
 import {
   Clock,
   Timer,
@@ -115,24 +116,29 @@ export default function LivePeriodTracker({
   const chimeEnabled = effectiveSound.enabled && effectiveSound.volume > 0;
   const soundVolume = effectiveSound.volume;
 
-  // Activity Timer tick effect (pure countdown only)
+  // Activity Timer: countdown tick; when it reaches 0, stop, mark finished and play the chime once
+  const timerSecondsRef = useRef(timerSeconds);
   useEffect(() => {
-    if (!isTimerRunning) return;
+    timerSecondsRef.current = timerSeconds;
+  }, [timerSeconds]);
+
+  useEffect(() => {
+    if (!isTimerRunning) return undefined;
     const interval = setInterval(() => {
-      setTimerSeconds((prev) => Math.max(0, prev - 1));
+      const next = Math.max(0, timerSecondsRef.current - 1);
+      timerSecondsRef.current = next;
+      setTimerSeconds(next);
+      if (next === 0) {
+        clearInterval(interval);
+        setIsTimerRunning(false);
+        setIsTimerFinished(true);
+        if (chimeEnabled && soundVolume > 0) {
+          playClassroomChime('activity_end', soundVolume);
+        }
+      }
     }, 1000);
     return () => clearInterval(interval);
-  }, [isTimerRunning]);
-
-  // Activity Timer completion: stop, mark finished and play the chime once
-  useEffect(() => {
-    if (!isTimerRunning || timerSeconds > 0) return;
-    setIsTimerRunning(false);
-    setIsTimerFinished(true);
-    if (chimeEnabled && soundVolume > 0) {
-      playClassroomChime('activity_end', soundVolume);
-    }
-  }, [isTimerRunning, timerSeconds, chimeEnabled, soundVolume]);
+  }, [isTimerRunning, chimeEnabled, soundVolume]);
 
   const formatTimerDisplay = (totalSec) => {
     const mins = Math.floor(Math.max(0, totalSec) / 60);
@@ -250,15 +256,12 @@ export default function LivePeriodTracker({
   } = useBrowserFullscreen();
 
   // Sync fullscreen wake lock when entering/exiting fullscreen
-  useEffect(() => {
-    if (isFullscreen) {
-      setFullscreenWakeActive(fullscreenWakePref);
-    } else {
-      setFullscreenWakeActive(false);
-    }
-  }, [isFullscreen, fullscreenWakePref]);
+  useSyncOnChange([isFullscreen, fullscreenWakePref], () => {
+    setFullscreenWakeActive(isFullscreen ? fullscreenWakePref : false);
+  });
 
   const effectiveWakeEnabled = isFullscreen ? fullscreenWakeActive : bannerWakeEnabled;
+  const shiftActive = isFullscreen && effectiveWakeEnabled;
 
   const handleWakeAutoChange = (nextVal) => {
     if (isFullscreen) {
@@ -288,10 +291,6 @@ export default function LivePeriodTracker({
     clearAutoReleasedNotice();
   };
 
-  const handleToggleBannerWake = () => {
-    setBannerWakeEnabled((prev) => !prev);
-    clearAutoReleasedNotice();
-  };
 
   const handleOpenClassroomFullscreen = () => {
     setFullscreen(true);
@@ -331,10 +330,7 @@ export default function LivePeriodTracker({
 
   // Subtle pixel-shift every 45 seconds when Fullscreen + Awake is active to prevent OLED/Projector burn-in
   useEffect(() => {
-    if (!isFullscreen || !effectiveWakeEnabled) {
-      setPixelShift({ x: 0, y: 0 });
-      return;
-    }
+    if (!isFullscreen || !effectiveWakeEnabled) return undefined;
     const interval = setInterval(() => {
       const rx = Math.floor(Math.random() * 7) - 3; // -3px to +3px
       const ry = Math.floor(Math.random() * 7) - 3;
@@ -1109,7 +1105,7 @@ export default function LivePeriodTracker({
           {/* Center Giant Display (with subtle pixel shift when Awake is active to protect OLED/Projectors) */}
           <div
             className="my-auto max-w-6xl w-full mx-auto space-y-5 sm:space-y-6 text-center transition-transform duration-1000"
-            style={{ transform: `translate(${pixelShift.x}px, ${pixelShift.y}px)` }}
+            style={{ transform: `translate(${shiftActive ? pixelShift.x : 0}px, ${shiftActive ? pixelShift.y : 0}px)` }}
           >
             {/* Period & Subject Pill */}
             <div className="space-y-2">

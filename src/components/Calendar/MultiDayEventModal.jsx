@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { X, Calendar as CalIcon, Flag, Trash2, Check, AlertCircle, Sparkles } from 'lucide-react';
-import { SUBJECT_COLORS, getColorById } from '../../utils/colors';
+import React, { useState } from 'react';
+import { useSyncOnChange } from '../../utils/useSyncOnChange';
+import { X, Calendar as CalIcon, Flag, Trash2, Check, Sparkles } from 'lucide-react';
+import { SUBJECT_COLORS } from '../../utils/colors';
 import { countDaysInRange, formatThaiDate } from '../../utils/dateUtils';
 
 export default function MultiDayEventModal({
@@ -21,7 +22,7 @@ export default function MultiDayEventModal({
   const [colorId, setColorId] = useState('amber');
   const [notes, setNotes] = useState('');
 
-  useEffect(() => {
+  useSyncOnChange([editingEvent, initialDateStr, isOpen], () => {
     if (editingEvent) {
       setTitle(editingEvent.title || '');
       setStartDate(editingEvent.startDate || '');
@@ -40,7 +41,7 @@ export default function MultiDayEventModal({
       setColorId('amber');
       setNotes('');
     }
-  }, [editingEvent, initialDateStr, isOpen]);
+  });
 
   if (!isOpen) return null;
 

@@ -562,7 +562,7 @@ export default function AuthScreen({ onDemoMode }) {
         </form>
 
         {/* Footer switch mode */}
-        {(isConfigured || true) && (
+        {(
           <div className="mt-4 text-center text-xs text-slate-500 dark:text-slate-400">
             {mode === 'login' ? (
               <p>

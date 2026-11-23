@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { useSyncOnChange } from '../../utils/useSyncOnChange';
 import {
   X,
   User,
@@ -40,7 +41,7 @@ export default function AccountModal({
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
-  useEffect(() => {
+  useSyncOnChange([isOpen, user], () => {
     if (isOpen && user) {
       const accounts = getLocalAccounts();
       const matched = accounts.find(
@@ -84,7 +85,7 @@ export default function AccountModal({
       setErrorMsg('');
       setSuccessMsg('');
     }
-  }, [isOpen, user]);
+  });
 
   if (!isOpen || !user) return null;
 

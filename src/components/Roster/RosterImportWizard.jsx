@@ -128,12 +128,28 @@ export default function RosterImportWizard({ isOpen, classGroup, existingCount =
           applyRows(nonEmpty[0].data);
         }
       } else if (lower.endsWith('.xls')) {
-        setError('ยังไม่รองรับไฟล์ .xls แบบเก่า กรุณาเปิดใน Excel แล้วบันทึกเป็น .xlsx หรือ .csv ก่อน');
+        // Legacy Excel format: parsed with SheetJS, loaded only when such a file is picked
+        const XLSX = await import('xlsx');
+        const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+        const list = workbook.SheetNames.map((name) => ({
+          sheet: name,
+          data: XLSX.utils
+            .sheet_to_json(workbook.Sheets[name], { header: 1, blankrows: false, defval: null, raw: false })
+            .map((row) => row.map((cell) => (cell === null || cell === undefined ? null : String(cell).trim() || null))),
+        }));
+        const nonEmpty = list.filter((sh) => sh.data.length > 0);
+        if (nonEmpty.length === 0) {
+          setError('ไฟล์ Excel นี้ไม่มีข้อมูล');
+        } else {
+          setSheets(nonEmpty);
+          setSheetIndex(0);
+          applyRows(nonEmpty[0].data);
+        }
       } else if (lower.endsWith('.csv') || lower.endsWith('.txt') || lower.endsWith('.tsv')) {
         setSheets([]);
         applyRows(parseDelimitedText(await decodeTextFile(file)));
       } else {
-        setError('รองรับเฉพาะไฟล์ .xlsx, .csv, .txt');
+        setError('รองรับเฉพาะไฟล์ .xlsx, .xls, .csv, .txt');
       }
     } catch (err) {
       console.error(err);
@@ -294,14 +310,14 @@ export default function RosterImportWizard({ isOpen, classGroup, existingCount =
               ) : (
                 <div className="space-y-2">
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    รองรับ .xlsx, .csv, .txt (ไฟล์ Excel เก่า .xls ให้บันทึกเป็น .xlsx ก่อน) ถ้ามีหลายชีตจะให้เลือกในขั้นถัดไป
+                    รองรับ .xlsx, .xls, .csv, .txt ถ้ามีหลายชีตจะให้เลือกในขั้นถัดไป
                   </p>
                   <label className="flex flex-col items-center justify-center gap-2 py-10 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 text-sm text-slate-600 dark:text-slate-300 cursor-pointer hover:border-indigo-400 transition-colors">
                     <FileSpreadsheet className="w-8 h-8 text-indigo-500" />
                     <span className="font-semibold">{busy ? 'กำลังอ่านไฟล์...' : 'คลิกเพื่อเลือกไฟล์'}</span>
                     <input
                       type="file"
-                      accept=".xlsx,.csv,.txt,.tsv"
+                      accept=".xlsx,.xls,.csv,.txt,.tsv"
                       className="hidden"
                       disabled={busy}
                       onChange={(e) => {

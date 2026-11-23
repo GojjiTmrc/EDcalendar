@@ -1,19 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import {
-  ChevronLeft,
-  ChevronRight,
-  Calendar as CalIcon,
-  Plus,
-  Flag,
-  CheckCircle2,
-  Ban,
-  AlertCircle,
-  Clock,
-  FileText,
-  BookCheck,
-  ArrowDown,
-  Sparkles
-} from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Flag, FileText, BookCheck, ArrowDown, Sparkles } from 'lucide-react';
 import MonthView from './MonthView';
 import WeekView from './WeekView';
 import DayView from './DayView';

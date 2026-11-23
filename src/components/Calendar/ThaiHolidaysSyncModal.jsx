@@ -1,13 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import {
-  X,
-  Calendar as CalIcon,
-  CheckCircle2,
-  Check,
-  Sparkles,
-  Flag,
-  RefreshCw,
-} from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { useSyncOnChange } from '../../utils/useSyncOnChange';
+import { X, Check, Sparkles, Flag, RefreshCw } from 'lucide-react';
 import { formatThaiDate } from '../../utils/dateUtils';
 import { getThaiHolidaysForSemester } from '../../utils/thaiHolidays';
 
@@ -30,14 +23,14 @@ export default function ThaiHolidaysSyncModal({
   }, [semester, multiDayEvents, includeSubstitute]);
 
   // Pre-select all unsynced holidays whenever the modal opens or holiday list updates
-  useEffect(() => {
+  useSyncOnChange([isOpen, holidays], () => {
     if (isOpen) {
       const initial = new Set(
         holidays.filter((h) => !h.isAlreadySynced).map((h) => h.date)
       );
       setSelectedDates(initial);
     }
-  }, [isOpen, holidays]);
+  });
 
   if (!isOpen || !semester) return null;
 

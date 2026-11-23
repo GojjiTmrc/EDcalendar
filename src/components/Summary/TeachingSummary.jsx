@@ -1,20 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import {
-  Printer,
-  Calendar as CalIcon,
-  CheckCircle2,
-  Clock,
-  Ban,
-  AlertCircle,
-  BookOpen,
-  Sparkles,
-  TrendingUp,
-  Filter,
-  Search,
-  ChevronDown,
-  BookCheck,
-  Check
-} from 'lucide-react';
+import { Printer, CheckCircle2, Clock, Ban, AlertCircle, BookOpen, TrendingUp, Search, ChevronDown, BookCheck, Check } from 'lucide-react';
 import { calculateTeachingSummary, getTermScopeInfo } from '../../services/summaryService';
 import SummaryPrintView from './SummaryPrintView';
 import SessionDetailModal from '../Calendar/SessionDetailModal';

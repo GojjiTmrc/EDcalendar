@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
+import { useSyncOnChange } from '../../utils/useSyncOnChange';
 import {
   X,
   Settings,
@@ -101,7 +102,7 @@ export default function SettingsModal({
   const [isSyncingNow, setIsSyncingNow] = useState(false);
   const fileInputRef = useRef(null);
 
-  useEffect(() => {
+  useSyncOnChange([isOpen], () => {
     if (isOpen) {
       setPeriodList(periods || getStoredPeriods());
       setSignatures(getStoredSignatures());
@@ -114,7 +115,7 @@ export default function SettingsModal({
       );
       setStatusBanner(null);
     }
-  }, [isOpen, periods, defaultTab, confirmTeachingMode, soundSettings, user?.id]);
+  });
 
   if (!isOpen) return null;
 

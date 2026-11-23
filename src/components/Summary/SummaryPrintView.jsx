@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { useSyncOnChange } from '../../utils/useSyncOnChange';
 import { X, Printer } from 'lucide-react';
 import { formatThaiDate } from '../../utils/dateUtils';
 
@@ -19,7 +20,7 @@ export default function SummaryPrintView({
     () => localStorage.getItem('edcalendar_academic_role') || 'กลุ่มสาระการเรียนรู้วิทยาศาสตร์และเทคโนโลยี'
   );
 
-  useEffect(() => {
+  useSyncOnChange([isOpen], () => {
     if (isOpen) {
       setTeacherName(localStorage.getItem('edcalendar_teacher_name') || 'นายกิตติพงษ์ โพธิวาระ');
       setSchoolName(localStorage.getItem('edcalendar_school_name') || 'โรงเรียนสุมเส้าพิทยาคาร');
@@ -28,7 +29,7 @@ export default function SummaryPrintView({
           'กลุ่มสาระการเรียนรู้วิทยาศาสตร์และเทคโนโลยี'
       );
     }
-  }, [isOpen]);
+  });
 
   if (!isOpen || !summaryData) return null;
 

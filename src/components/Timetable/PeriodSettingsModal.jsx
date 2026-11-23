@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Clock, RotateCcw, Check, Save } from 'lucide-react';
+import { X, Clock, RotateCcw, Save } from 'lucide-react';
 import { DEFAULT_PERIODS } from '../../utils/periodConfig';
 
 export default function PeriodSettingsModal({ isOpen, onClose, periods, onSave }) {

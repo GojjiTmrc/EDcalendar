@@ -1,21 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import {
-  BookCheck,
-  Calendar as CalIcon,
-  Clock,
-  MapPin,
-  Users,
-  Search,
-  Filter,
-  Edit3,
-  Plus,
-  Sparkles,
-  Target,
-  ArrowUpDown,
-  Layers,
-  CheckCircle2,
-  FileText
-} from 'lucide-react';
+import { BookCheck, Calendar as CalIcon, Clock, MapPin, Users, Search, Edit3, Sparkles, Target, ArrowUpDown, Layers } from 'lucide-react';
 import {
   formatThaiDate,
   parseDateString,

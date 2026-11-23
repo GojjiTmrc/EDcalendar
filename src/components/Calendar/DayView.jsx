@@ -1,7 +1,7 @@
 import React from 'react';
-import { Plus, Clock, MapPin, Users, BookOpen, AlertCircle, CheckCircle2, Edit3, Flag, FileText, Check, Target, Package, BookCheck } from 'lucide-react';
+import { Plus, Clock, MapPin, Users, AlertCircle, Edit3, Flag, FileText, Check, Target, Package, BookCheck } from 'lucide-react';
 import { formatThaiDate } from '../../utils/dateUtils';
-import { SESSION_STATUS, getColorById } from '../../utils/colors';
+import { getColorById } from '../../utils/colors';
 import { getMoodLevel } from '../../utils/moodConfig';
 
 export default function DayView({

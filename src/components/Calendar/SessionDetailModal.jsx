@@ -1,25 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import {
-  X,
-  Clock,
-  MapPin,
-  BookOpen,
-  AlertCircle,
-  CheckCircle2,
-  RotateCcw,
-  Plus,
-  Trash2,
-  FileText,
-  Check,
-  Target,
-  Package,
-  ListChecks,
-  BookCheck,
-  Sparkles,
-  Sun
-} from 'lucide-react';
+import { useSyncOnChange } from '../../utils/useSyncOnChange';
+import { X, Clock, MapPin, AlertCircle, CheckCircle2, RotateCcw, Plus, Trash2, FileText, Check, Target, Package, BookCheck, Sparkles, Sun } from 'lucide-react';
 import { formatThaiDate } from '../../utils/dateUtils';
-import { SESSION_STATUS, getColorById } from '../../utils/colors';
 import { useScreenWakeLock } from '../../utils/wakeLockUtils';
 import MoodPickerModal from './MoodPickerModal';
 
@@ -66,12 +48,22 @@ export default function SessionDetailModal({
   const [customRoom, setCustomRoom] = useState('');
   const [modalWakeEnabled, setModalWakeEnabled] = useState(false);
 
-  // Release wake lock automatically when modal closes
-  useEffect(() => {
+  useSyncOnChange([isOpen], () => {
     if (!isOpen) {
       setModalWakeEnabled(false);
     }
-  }, [isOpen]);
+  });
+
+  // Esc closes the modal (the mood picker handles its own Esc while it is open)
+  const hasMoodPrompt = Boolean(moodPrompt);
+  useEffect(() => {
+    if (!isOpen || hasMoodPrompt) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, hasMoodPrompt, onClose]);
 
   useScreenWakeLock({
     enabled: Boolean(isOpen && modalWakeEnabled),
@@ -79,7 +71,7 @@ export default function SessionDetailModal({
     autoReleaseAfterSchool: false,
   });
 
-  useEffect(() => {
+  useSyncOnChange([session, dateStr, isOpen, initialTab], () => {
     setActiveModalTab(initialTab === 'postLog' ? 'postLog' : 'plan');
     if (session) {
       setStatus(session.status || 'normal');
@@ -111,7 +103,7 @@ export default function SessionDetailModal({
       setEndTime('10:00');
       setCustomRoom('');
     }
-  }, [session, dateStr, isOpen, subjects, initialTab]);
+  });
 
   const handleAppendQuickPhrase = (phrase) => {
     setPostTeachingLog((prev) => {
@@ -144,7 +136,6 @@ export default function SessionDetailModal({
 
   const activeDate = session?.date || dateStr;
   const selectedSubject = subjects.find(s => s.id === (isCustom ? customSubjectId : session?.subjectId));
-  const color = selectedSubject ? getColorById(selectedSubject.colorId) : null;
 
   const handleSave = (e) => {
     e.preventDefault();
@@ -805,7 +796,7 @@ export default function SessionDetailModal({
                         type="button"
                         onClick={() => {
                           onClose();
-                          onOpenAddShortNote && onOpenAddShortNote(activeDate, selectedSubject?.id);
+                          onOpenAddShortNote?.(activeDate, selectedSubject?.id);
                         }}
                         className="text-[11px] font-semibold text-amber-700 dark:text-amber-300 hover:underline flex items-center gap-1"
                       >
@@ -849,7 +840,7 @@ export default function SessionDetailModal({
                               type="button"
                               onClick={() => {
                                 onClose();
-                                onOpenEditShortNote && onOpenEditShortNote(note);
+                                onOpenEditShortNote?.(note);
                               }}
                               className="text-[11px] text-amber-600 dark:text-amber-400 hover:underline shrink-0 font-medium"
                             >

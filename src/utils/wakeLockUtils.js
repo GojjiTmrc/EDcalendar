@@ -244,6 +244,7 @@ export function useScreenWakeLock({
   // Acquire or release when `enabled` changes
   useEffect(() => {
     if (enabled) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- mirrors the external Wake Lock API state
       acquireWakeLock();
     } else {
       releaseAllLocks();
@@ -283,6 +284,7 @@ export function useScreenWakeLock({
       prev !== 'after_school' &&
       phase === 'after_school'
     ) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reacts to an external clock phase change
       setAutoReleasedNotice(true);
       if (onChangeEnabled) {
         onChangeEnabled(false);

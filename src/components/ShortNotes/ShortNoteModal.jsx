@@ -1,15 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import {
-  X,
-  FileText,
-  Calendar as CalIcon,
-  Clock,
-  Trash2,
-  CheckCircle2,
-  BookOpen,
-  AlertCircle,
-  Check
-} from 'lucide-react';
+import React, { useState } from 'react';
+import { useSyncOnChange } from '../../utils/useSyncOnChange';
+import { X, FileText, Trash2, Check } from 'lucide-react';
 import { formatThaiDate } from '../../utils/dateUtils';
 import { getColorById } from '../../utils/colors';
 
@@ -39,7 +30,7 @@ export default function ShortNoteModal({
   const [description, setDescription] = useState('');
   const [isCompleted, setIsCompleted] = useState(false);
 
-  useEffect(() => {
+  useSyncOnChange([editingNote, initialDate, initialSubjectId, isOpen], () => {
     if (editingNote) {
       setSubjectId(editingNote.subjectId || '');
       setTitle(editingNote.title || '');
@@ -56,7 +47,7 @@ export default function ShortNoteModal({
       setDescription('');
       setIsCompleted(false);
     }
-  }, [editingNote, initialDate, initialSubjectId, isOpen, subjects]);
+  });
 
   if (!isOpen) return null;
 

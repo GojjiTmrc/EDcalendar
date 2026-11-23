@@ -1,6 +1,6 @@
 import React from 'react';
 import { Plus, AlertCircle, Ban, Clock, Flag } from 'lucide-react';
-import { getSchoolWeekMonthGrid, toDateString, countDaysInRange } from '../../utils/dateUtils';
+import { getSchoolWeekMonthGrid, toDateString } from '../../utils/dateUtils';
 import { getColorById } from '../../utils/colors';
 import { getMoodLevel } from '../../utils/moodConfig';
 
@@ -119,7 +119,7 @@ export default function MonthView({
                           key={note.id}
                           onClick={(e) => {
                             e.stopPropagation();
-                            onEditShortNote && onEditShortNote(note);
+                            onEditShortNote?.(note);
                           }}
                           title={`นัดส่งงาน: ${note.title} (${note.duePeriod || 'ในคาบเรียน'})${note.isCompleted ? ' - ตรวจแล้ว' : ''}`}
                           className={`w-full text-left px-1.5 py-0.5 rounded text-[10px] font-medium border flex items-center gap-1 transition-all hover:scale-[1.01] ${

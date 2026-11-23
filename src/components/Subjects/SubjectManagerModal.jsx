@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Plus, Edit2, Trash2, BookOpen, MapPin, Users, Palette, Check, Clock, Calendar } from 'lucide-react';
+import { X, Plus, Edit2, Trash2, BookOpen, MapPin, Check } from 'lucide-react';
 import { SUBJECT_COLORS, getColorById } from '../../utils/colors';
 import { getTermScopeInfo } from '../../services/summaryService';
 

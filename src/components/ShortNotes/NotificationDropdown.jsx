@@ -1,20 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import {
-  Bell,
-  CheckCircle2,
-  Clock,
-  AlertCircle,
-  Plus,
-  X,
-  ChevronRight,
-  Check,
-  Calendar,
-  Filter,
-  Target,
-  Package,
-  ListChecks,
-  MapPin
-} from 'lucide-react';
+import { Bell, CheckCircle2, Clock, AlertCircle, Plus, X, ChevronRight, Check, Calendar, Target, Package } from 'lucide-react';
 import { formatThaiDate, toDateString } from '../../utils/dateUtils';
 import { getColorById } from '../../utils/colors';
 
@@ -98,12 +83,10 @@ export default function NotificationDropdown({
       .filter(o => o.date >= todayStr && (o.topic || (o.prepChecklist && o.prepChecklist.length > 0)))
       .sort((a, b) => a.date.localeCompare(b.date));
 
-    let pendingCount = 0;
     const enriched = planned.map((p) => {
       const subject = subjectMap.get(p.subjectId);
       const checklist = Array.isArray(p.prepChecklist) ? p.prepChecklist : [];
       const unchecked = checklist.filter(c => !c.isDone).length;
-      pendingCount += unchecked;
 
       return {
         ...p,
@@ -115,7 +98,7 @@ export default function NotificationDropdown({
 
     return {
       plannedSessions: enriched,
-      pendingPrepCount: pendingCount,
+      pendingPrepCount: enriched.reduce((sum, p) => sum + p.unchecked, 0),
     };
   }, [overrides, subjects, todayStr]);
 
@@ -446,7 +429,7 @@ export default function NotificationDropdown({
                       type="button"
                       onClick={() => {
                         onClose();
-                        onOpenSession && onOpenSession(ps);
+                        onOpenSession?.(ps);
                       }}
                       className="text-[11px] text-sky-600 dark:text-sky-400 hover:underline font-semibold flex items-center gap-0.5"
                     >
